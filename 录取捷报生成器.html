@@ -62,7 +62,13 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
 .sec-title{font-size:16px;font-weight:800;color:var(--brand-red);margin:22px 0 10px}
 .confirm-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:start}
 .redact-box{background:#FFF;border:1px solid #F0E4D2;border-radius:12px;padding:12px}
-#redact-preview{width:100%;border-radius:8px;display:block}
+#redact-canvas{width:100%;border-radius:8px;display:block;touch-action:none}
+.redact-tools{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.tool{border:1.5px solid #E5DED2;background:#fff;border-radius:8px;padding:6px 14px;
+  font-size:13px;font-weight:700;cursor:pointer;color:#555}
+.tool.on{background:var(--crimson);color:#fff;border-color:var(--crimson)}
+.tool-hint{font-size:11.5px;color:var(--muted)}
+#redact-canvas.brushing{cursor:crosshair}
 #redact-summary{font-size:13px;margin-top:10px}
 #wm-badge{display:inline-block;background:var(--paper);color:var(--brand-red);
   font-size:12px;border-radius:8px;padding:2px 10px;margin-top:6px}
@@ -142,7 +148,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <div class="welcome-grid">
     <div>
       <div class="tool-head" style="text-align:left">
-        <h1>🎓 录取捷报生成器 <span class="ver">v1.1.0 · 2026-10-06</span></h1>
+        <h1>🎓 录取捷报生成器 <span class="ver">v1.2.0 · 2026-10-06</span></h1>
       </div>
       <div class="info">
         <h3>这是什么</h3>
@@ -196,7 +202,13 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <div class="sec-title">① 隐私打码 · 已自动完成</div>
   <div class="confirm-grid">
     <div class="redact-box">
-      <img id="redact-preview" alt="打码预览">
+      <div class="redact-tools">
+        <button id="tool-view" class="tool on" type="button">🖱️ 浏览</button>
+        <button id="tool-brush" class="tool" type="button">🖌️ 手动打码</button>
+        <button id="tool-undo" class="tool" type="button">↩ 撤销</button>
+        <span class="tool-hint">漏打的用笔刷框一下</span>
+      </div>
+      <canvas id="redact-canvas" class="brushable"></canvas>
       <div id="redact-summary"></div>
       <span id="wm-badge"></span>
     </div>
@@ -244,7 +256,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.1.0</footer>
+  <footer>自由未来 FreeFuture · v1.2.0</footer>
 </div>
 
 <script>
@@ -830,23 +842,30 @@ function processOffer(img, redactions) {
     ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
   }
 
-  /* 2) 稀疏水印：文案「自由未来升学」，定稿稀疏参数（450×96/错225/alpha0.15） */
-  const k = img.width / 1172;
+  drawWatermark(ctx, cv.width);
+  return cv;
+}
+
+/* 稀疏水印：文案「自由未来升学」，定稿稀疏参数（450×96/错225/alpha0.15）。
+   独立导出——手动打码重画时必须保留水印（勿在重画流程中遗漏） */
+function drawWatermark(ctx, width, height) {
+  const k = width / 1172;
   const size = Math.max(12, Math.round(24 * k));
   const stepX = Math.round(450 * k), stepY = Math.round(96 * k);
   const offX = Math.round(225 * k);
+  ctx.save();
   ctx.font = "500 " + size + "px " + FONT_STACK;
   ctx.fillStyle = "rgba(164,0,0,0.15)";
   ctx.textBaseline = "top"; ctx.textAlign = "left";
-  const cols = Math.ceil(cv.width / stepX) + 2;
-  const rows = Math.ceil(cv.height / stepY) + 2;
+  const cols = Math.ceil(width / stepX) + 2;
+  const rows = Math.ceil((height || ctx.canvas.height) / stepY) + 2;
   for (let r = 0; r < rows; r++) {
     const ox = r % 2 ? offX : 0;                       // 奇数行右移 -> X 交错
     for (let c = 0; c < cols; c++) {
       ctx.fillText("自由未来升学", c * stepX - ox, r * stepY);
     }
   }
-  return cv;
+  ctx.restore();
 }
 
 
@@ -916,7 +935,7 @@ function drawConfetti(ctx, conf, t, W, H) {
 /* 导出 */
 window.FreePoster = {
   PosterRenderer, layoutName, detectRedactions, processOffer,
-  loadImg, loadAssets, S, makeConfetti, drawConfetti,
+  loadImg, loadAssets, S, makeConfetti, drawConfetti, drawWatermark,
 };
 </script>
 <script>/* ============================================================
@@ -1048,7 +1067,9 @@ function groupTesseractLines(data) {
 function afterOCR(lines) {
   App.redactions = FreePoster.detectRedactions(lines);
   App.processed = FreePoster.processOffer(App.offerImg, App.redactions);
-  $("#redact-preview").src = App.processed.toDataURL("image/jpeg", 0.85);
+  App.redactStrokes = [];
+  initRedactBrush();
+  redrawRedactPreview();
   $("#redact-summary").textContent =
     App.redactions.length
       ? "已自动盖 " + App.redactions.length + " 处（奶油黄）：" +
@@ -1181,6 +1202,92 @@ function mapDegreeCn(en) {
   if (/doctor of philosophy|phd/.test(e)) return "博士";
   if (/bachelor/.test(e)) return "学士";
   return "";
+}
+
+
+/* ---------- 手动打码笔刷（v1.2.0）----------
+ * 浏览/笔刷双模式；笔刷下按住拖拽画奶油黄矩形；
+ * 矩形同时写入 App.processed（生成时生效）并保留水印 */
+function initRedactBrush() {
+  const cv = document.getElementById("redact-canvas");
+  if (cv.dataset.brushInit) { return; }
+  cv.dataset.brushInit = "1";
+  let brushing = false, start = null, cur = null;
+  const pos = e => {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * cv.width / r.width,
+             y: (e.clientY - r.top) * cv.height / r.height };
+  };
+  cv.addEventListener("pointerdown", e => {
+    if (!$("#tool-brush").classList.contains("on")) return;
+    brushing = true; start = pos(e); cur = start;
+    cv.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!brushing) return;
+    cur = pos(e);
+    redrawRedactPreview({x: Math.min(start.x, cur.x), y: Math.min(start.y, cur.y),
+      w: Math.abs(cur.x - start.x), h: Math.abs(cur.y - start.y)}, true);
+  });
+  const finish = e => {
+    if (!brushing) return;
+    brushing = false;
+    const w = Math.abs(cur.x - start.x), h = Math.abs(cur.y - start.y);
+    if (w > 4 && h > 4) {
+      App.redactStrokes.push({x: Math.min(start.x, cur.x), y: Math.min(start.y, cur.y), w, h});
+      repaintProcessed();
+      redrawRedactPreview();
+      $("#redact-summary").textContent =
+        "已盖 " + (App.redactions.length + App.redactStrokes.length) +
+        " 处（含手动 " + App.redactStrokes.length + " 处）";
+    } else {
+      redrawRedactPreview();     // 太小视为误触
+    }
+  };
+  cv.addEventListener("pointerup", finish);
+  cv.addEventListener("pointercancel", () => { brushing = false; redrawRedactPreview(); });
+  $("#tool-view").addEventListener("click", () => setTool("view"));
+  $("#tool-brush").addEventListener("click", () => setTool("brush"));
+  $("#tool-undo").addEventListener("click", () => {
+    App.redactStrokes.pop();
+    repaintProcessed();
+    redrawRedactPreview();
+  });
+}
+function setTool(mode) {
+  $("#tool-view").classList.toggle("on", mode === "view");
+  $("#tool-brush").classList.toggle("on", mode === "brush");
+  const cv = document.getElementById("redact-canvas");
+  cv.classList.toggle("brushing", mode === "brush");
+}
+/* 重画预览 canvas：原图 + 自动打码 + 手动笔画 (+拖拽中的临时矩形) */
+function redrawRedactPreview(draft, draftOn) {
+  const cv = document.getElementById("redact-canvas");
+  if (!cv || !App.offerImg) return;
+  if (cv.width !== App.offerImg.width) { cv.width = App.offerImg.width; cv.height = App.offerImg.height; }
+  const ctx = cv.getContext("2d");
+  ctx.drawImage(App.offerImg, 0, 0);
+  ctx.fillStyle = "#F6D3A1";
+  for (const r of App.redactions) ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+  for (const st of App.redactStrokes) ctx.fillRect(st.x, st.y, st.w, st.h);
+  if (draftOn && draft) {
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(draft.x, draft.y, draft.w, draft.h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#C20F08"; ctx.lineWidth = 2;
+    ctx.strokeRect(draft.x, draft.y, draft.w, draft.h);
+  }
+}
+/* 手动笔画同步进 App.processed（生成用），水印必须保留 */
+function repaintProcessed() {
+  if (!App.processed) return;
+  const ctx = App.processed.getContext("2d");
+  ctx.drawImage(App.offerImg, 0, 0);
+  ctx.fillStyle = "#F6D3A1";
+  for (const r of App.redactions) ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+  for (const st of App.redactStrokes) ctx.fillRect(st.x, st.y, st.w, st.h);
+  FreePoster.drawWatermark(ctx, App.processed.width, App.processed.height);
 }
 
 /* ---------- 页面 2：确认 ---------- */
