@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>录取捷报 · 最新效果</title>
+<style>
+body{margin:0;background:#3a3a38;font-family:'PingFang SC','Microsoft YaHei',sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:20px}
+h1{color:#F6D3A1;font-size:18px;font-weight:600;margin:0 0 4px}
+.meta{color:#bbb;font-size:12px;margin-bottom:14px}
+img{max-width:640px;width:100%;height:auto;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+a.open{color:#F6D3A1;font-size:13px;margin-top:14px;text-decoration:none;
+  border:1px solid #F6D3A1;border-radius:8px;padding:6px 16px}
+</style></head><body>
+<h1>录取捷报 · 最新效果图</h1>
+<div class="meta" id="vinfo">加载中…</div>
+<img src="poster.jpg" alt="最新成品">
+<a class="open" href="generator.html">▶ 打开生成器（彩带动画版）</a>
+<script>
+fetch('version.json').then(r=>r.json()).then(v=>{
+  document.getElementById('vinfo').textContent =
+    v.version + ' · 更新于 ' + v.time;
+}).catch(()=>{});
+</script>
+</body></html>
