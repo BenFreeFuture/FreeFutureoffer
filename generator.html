@@ -155,7 +155,8 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <div class="welcome-grid">
     <div>
       <div class="tool-head" style="text-align:left">
-        <h1>🎓 录取捷报生成器 <span class="ver">v1.3.0 · 2026-10-06</span></h1>
+        <h1>🎓 录取捷报生成器 <a href="#" id="ver-link" class="ver">v1.3.0</a>
+          <span class="new-note" id="new-note"></span></h1>
       </div>
       <div class="info">
         <h3>这是什么</h3>
@@ -242,6 +243,52 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
     预计 5 秒 · ≈301dpi · ≤2MB · ✔️ 自动跟最高学位
   </div>
 </div>
+
+<!-- ================= 更新日志 ================= -->
+<div class="page" id="page-changelog">
+  <span class="sub-link" id="cl-back">← 返回</span>
+  <div class="sec-title">📋 版本更新日志</div>
+  <div id="changelog-list"></div>
+</div>
+
+<!-- ================= Bug 反馈（全页浮动） ================= -->
+<button id="fab-feedback" type="button">🐞<br>反馈</button>
+<div id="modal-feedback" hidden>
+  <div class="fb-card">
+    <div class="fb-head">🐞 告诉我有什么可以改善</div>
+    <textarea id="fb-text" placeholder="欢迎打字描述：哪里不好用 / 想要什么功能 / 哪里识别错了…"></textarea>
+    <div id="fb-images"></div>
+    <div class="fb-hint">支持 Ctrl+V / ⌘V 直接粘贴截图进来</div>
+    <div class="fb-btns">
+      <button id="fb-send" class="act-btn primary" type="button">📧 生成反馈邮件</button>
+      <button id="fb-close" class="act-btn ghost" type="button">取消</button>
+    </div>
+    <div class="fb-hint" id="fb-tip"></div>
+  </div>
+</div>
+<style>
+#fab-feedback{position:fixed;right:18px;bottom:18px;z-index:900;border:2px solid var(--crimson);
+  background:#fff;color:var(--crimson);border-radius:14px;padding:8px 12px;font-size:13px;
+  font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(194,15,8,.18)}
+#fab-feedback:hover{background:var(--crimson);color:#fff}
+#modal-feedback{position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.45);
+  display:flex;align-items:center;justify-content:center;padding:16px}
+.fb-card{background:#fff;border-radius:14px;max-width:520px;width:100%;padding:20px}
+.fb-head{font-size:16px;font-weight:800;color:var(--brand-red);margin-bottom:10px}
+#fb-text{width:100%;min-height:110px;border:1.5px solid #E5DED2;border-radius:10px;
+  padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical}
+#fb-images{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+#fb-images img{height:64px;border-radius:6px;border:1px solid #ddd}
+.fb-hint{font-size:12px;color:var(--muted);margin-top:8px}
+.fb-btns{display:flex;gap:10px;margin-top:12px}
+.fb-btns .act-btn{flex:1;padding:10px;font-size:14px}
+#changelog-list .cl-item{background:#fff;border:1px solid #F0E4D2;border-radius:10px;
+  padding:12px 16px;margin-bottom:10px}
+#changelog-list .cl-v{font-weight:800;color:var(--brand-red)}
+#changelog-list .cl-t{font-size:12px;color:var(--muted);margin-left:8px}
+#changelog-list .cl-n{font-size:13.5px;margin-top:4px}
+.new-note{font-size:12.5px;color:var(--brand-red);font-weight:700;margin-left:6px}
+</style>
 
 <!-- ================= 页面 3 · 结果 ================= -->
 <div class="page" id="page-result">
@@ -952,12 +999,21 @@ window.FreePoster = {
 };
 </script>
 <script>/* ============================================================
- * FreePoster App v1.0 —— 三页交互逻辑
- * 欢迎页 -> OCR 确认页 -> 结果页
+ * FreePoster App v1.4.0 —— 三页交互逻辑 + 更新日志 + Bug 通报
  * ============================================================ */
 "use strict";
 
+const VERSION = "v1.4.0";
+const CHANGELOG = [
+  { v: "v1.4.0", t: "2026-10-06", n: "🐞 一键 Bug 通报按钮上线：截图粘贴 + 一句话描述，直达开发者邮箱，欢迎试用~" },
+  { v: "v1.3.0", t: "2026-10-06", n: "校名/专业多次抓取智能比对——同一学校出现多次自动取最完整版，邮件截图版式识别大升级" },
+  { v: "v1.2.0", t: "2026-10-06", n: "🖌️ 人工打码笔刷上线——OCR 漏掉的信息用笔刷框一下即可，欢迎试用~" },
+  { v: "v1.1.0", t: "2026-10-06", n: "生日/多行地址自动打码，电话识别更准，识别引擎稳定性升级" },
+  { v: "v1.0.0", t: "2026-10-05", n: "🎉 首发版：OCR 自动识别 + 10 类隐私自动打码 + 彩带飘落动画 + 301dpi 一键下载" },
+];
+
 const App = {
+  errLog: [],
   T: null,                    // template.json
   offerImg: null,             // 原始 offer Image
   redactions: [],             // 打码区域
@@ -981,6 +1037,13 @@ const showPage = id => {
   window.scrollTo(0, 0);
 };
 
+
+/* 全局错误收集（随 Bug 反馈一并打包） */
+window.addEventListener("error", e =>
+  App.errLog.push(`${new Date().toLocaleString()} ${e.message} @${e.filename?.split("/").pop()}:${e.lineno}`));
+window.addEventListener("unhandledrejection", e =>
+  App.errLog.push(`${new Date().toLocaleString()} Promise: ${e.reason?.message || e.reason}`));
+
 /* ---------- 启动 ---------- */
 async function boot() {
   /* 模板数据由构建脚本注入 __TEMPLATE__ 占位；本地开发用 fetch */
@@ -994,6 +1057,9 @@ async function boot() {
   initUpload();
   initConfirm();
   initResult();
+  initChangelog();
+  initFeedback();
+  renderVersionArea();
   showPage("page-welcome");
 }
 
@@ -1600,6 +1666,86 @@ async function renderHistory() {
 }
 
 boot();
+
+/* ---------- 更新日志页 ---------- */
+function renderVersionArea() {
+  const link = $("#ver-link");
+  if (link) link.textContent = VERSION;
+  const note = $("#new-note");
+  if (note) note.textContent = "✨ " + CHANGELOG[0].n;
+}
+function initChangelog() {
+  $("#ver-link").addEventListener("click", e => { e.preventDefault(); showPage("page-changelog"); });
+  $("#cl-back").addEventListener("click", () => showPage("page-welcome"));
+  $("#changelog-list").innerHTML = CHANGELOG.map(c =>
+    `<div class="cl-item"><span class="cl-v">${c.v}</span><span class="cl-t">${c.t}</span><div class="cl-n">${c.n}</div></div>`
+  ).join("");
+}
+
+/* ---------- Bug 反馈（图片粘贴 + .eml 打包） ---------- */
+const FB = { images: [] };
+function initFeedback() {
+  $("#fab-feedback").addEventListener("click", () => {
+    $("#modal-feedback").hidden = false;
+    $("#fb-text").focus();
+  });
+  $("#fb-close").addEventListener("click", () => { $("#modal-feedback").hidden = true; });
+  $("#modal-feedback").addEventListener("click", e => {
+    if (e.target.id === "modal-feedback") $("#modal-feedback").hidden = true;
+  });
+  /* 图片粘贴 */
+  document.addEventListener("paste", e => {
+    if ($("#modal-feedback").hidden) return;
+    for (const item of (e.clipboardData?.items || [])) {
+      if (!item.type.startsWith("image/")) continue;
+      const f = item.getAsFile();
+      const rd = new FileReader();
+      rd.onload = () => {
+        FB.images.push(rd.result);
+        const im = document.createElement("img");
+        im.src = rd.result;
+        $("#fb-images").appendChild(im);
+      };
+      rd.readAsDataURL(f);
+    }
+  });
+  /* 生成 .eml：文本反馈 + 诊断信息 + 截图附件，双击即可用邮件 App 发送 */
+  $("#fb-send").addEventListener("click", () => {
+    const text = $("#fb-text").value.trim();
+    if (!text && !FB.images.length) { alert("写点什么或者贴张截图吧~"); return; }
+    const diag = [
+      "---- 诊断信息 ----",
+      "版本: " + VERSION,
+      "时间: " + new Date().toLocaleString(),
+      "页面: " + location.href.slice(0, 80),
+      "设备: " + navigator.userAgent.slice(0, 100),
+      "最近错误: " + (App.errLog.slice(-8).join(" | ") || "无"),
+    ].join("\n");
+    const full = (text || "（无文字描述）") + "\n\n" + diag;
+    const B = "freeposter-" + Date.now(), C = "\r\n";
+    let eml = `To: wang@FreeFuture.com.cn${C}`;
+    eml += `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent("【录取捷报】用户反馈 " + VERSION)))}?=${C}`;
+    eml += `MIME-Version: 1.0${C}Content-Type: multipart/mixed; boundary="${B}"${C}${C}`;
+    eml += `--${B}${C}Content-Type: text/plain; charset=UTF-8${C}Content-Transfer-Encoding: base64${C}${C}`;
+    eml += btoa(unescape(encodeURIComponent(full))) + C + C;
+    FB.images.forEach((d, i) => {
+      eml += `--${B}${C}Content-Type: image/png; name="feedback-${i + 1}.png"${C}`;
+      eml += `Content-Transfer-Encoding: base64${C}Content-Disposition: attachment; filename="feedback-${i + 1}.png"${C}${C}`;
+      eml += d.split(",")[1] + C + C;
+    });
+    eml += `--${B}--${C}`;
+    /* 下载 .eml */
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([eml], { type: "message/rfc822" }));
+    a.download = "录取捷报反馈.eml";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    $("#fb-tip").innerHTML =
+      "✅ 反馈邮件已生成并开始下载——<b>双击下载的「录取捷报反馈.eml」</b>即可用邮件 App 发送到 wang@FreeFuture.com.cn" +
+      "（截图已自动作为附件）";
+    $("#fb-text").value = ""; FB.images = []; $("#fb-images").innerHTML = "";
+  });
+}
 </script>
 </body>
 </html>
