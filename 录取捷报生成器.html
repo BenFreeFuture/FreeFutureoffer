@@ -142,7 +142,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <div class="welcome-grid">
     <div>
       <div class="tool-head" style="text-align:left">
-        <h1>🎓 录取捷报生成器 <span class="ver">v1.0.0 · 2026-10-05</span></h1>
+        <h1>🎓 录取捷报生成器 <span class="ver">v1.1.0 · 2026-10-06</span></h1>
       </div>
       <div class="info">
         <h3>这是什么</h3>
@@ -244,7 +244,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.0.0</footer>
+  <footer>自由未来 FreeFuture · v1.1.0</footer>
 </div>
 
 <script>
@@ -722,6 +722,8 @@ const REDACT_TAGS = [
   { cat: "姓名", re: /^(ms|mrs|mr|miss|dr|prof)\.?\s+[A-Z][A-Z\s·]{2,30}$/i, full: true },
   { cat: "申请号", re: /application\s*(no\.?|number)\s*[:：]/i },
   { cat: "学号", re: /student\s*(id|number)\s*(no\.?)?\s*[:：]/i },
+  { cat: "生日", re: /(date\s*of\s*birth|dob|birth\s*date)\s*[:：]/i },
+  { cat: "地址", re: /^(address|mailing\s*address|correspondence\s*address)\s*[:：]/i, addr: true },
   { cat: "电话", re: /^(tel|phone|mobile|contact)\s*[:：]/i },
   { cat: "邮箱", re: /[\w.+-]+@[\w-]+\.[\w.]+/ },
   { cat: "导师", re: /(supervisor|director of studies|advisor|mentor)\s*[:：]/i },
@@ -731,7 +733,7 @@ const REDACT_REGEX = [
   { cat: "学号", re: /\b\d{6,11}\b/ },
   { cat: "身份证", re: /\b\d{17}[\dXx]\b/ },
   { cat: "邮箱", re: /\b[\w.+-]+@[\w-]+\.[\w.]+\b/ },
-  { cat: "电话", re: /(\+\d{1,3}[\s-]?)?\d{8}\b/ },
+  { cat: "电话", re: /(?:\+\d{1,3}[\s-]?\d{7,12}\b|\b1\d{10}\b|\b0\d{2,3}[- ]\d{7,8}\b)/ },
 ];
 
 /* lines: [{words:[{text,bbox}], bbox}] 返回命中区域列表 */
@@ -754,13 +756,29 @@ function detectRedactions(lines) {
         const pool = tag.full ? line.words : line.words.slice(wi);
         const rest = pool.filter(w => /[A-Za-z0-9@._+-]/.test(w.text));
         if (rest.length) {
-          hits.push({
+          const hit = {
             cat: tag.cat,
             x0: Math.min(...rest.map(w => w.bbox.x0)) - 4,
             y0: Math.min(...rest.map(w => w.bbox.y0)) - 4,
             x1: Math.max(...rest.map(w => w.bbox.x1)) + 4,
             y1: Math.max(...rest.map(w => w.bbox.y1)) + 4,
-          });
+          };
+          hits.push(hit);
+          /* 跨行地址：值列常换行（Room/Foshan/Guangdong…），
+             其下 3 行内 x0 ≥ 标签行中点、行高相接的行一并覆盖 */
+          if (tag.addr) {
+            const mid = line.bbox.x0 + (line.bbox.x1 - line.bbox.x0) / 2;
+            const idx = lines.indexOf(line);
+            for (let k = 1; k <= 3; k++) {
+              const nl = lines[idx + k];
+              if (!nl) break;
+              const nb = nl.bbox;
+              if (nb.y0 - hit.y1 > (nb.y1 - nb.y0) * 1.6) break;      // 离得太远
+              if (nb.x0 < mid) break;                                  // 不在值列
+              hits.push({ cat: tag.cat, x0: nb.x0 - 4, y0: nb.y0 - 4,
+                          x1: nb.x1 + 4, y1: nb.y1 + 4 });
+            }
+          }
         }
       }
       break;   // 一行命中一个标签即可
@@ -984,7 +1002,11 @@ async function runOCR() {
   try {
     status.textContent = "加载识别引擎（首次约 3 秒）…";
     if (typeof Tesseract === "undefined") throw new Error("no-lib");
+    /* 🔒 锁定 core/lang 版本：浮动 tag 曾在 2026-10-06 拉到劣化 wasm
+       （细体行大面积断笔，仅加粗行存活），锁死小版本勿回调 */
     const worker = await Tesseract.createWorker("eng", 1, {
+      corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0",
+      langPath: "https://tessdata.projectnaptha.com/4.0.0",
       logger: m => {
         if (m.status === "recognizing text")
           status.textContent = "识别中 " + Math.round(m.progress * 100) + "%";
