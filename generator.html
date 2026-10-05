@@ -12,6 +12,8 @@
   --card-w:400px;
 }
 *{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+[hidden]{display:none!important}
 body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   background:#FDF8F2;color:var(--ink);line-height:1.6}
 .page{display:none;max-width:1080px;margin:0 auto;padding:24px 20px 60px}
@@ -193,7 +195,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    v1.0.0 · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.4.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -1060,6 +1062,8 @@ async function boot() {
   initChangelog();
   initFeedback();
   renderVersionArea();
+  const fv = $("#footer-ver");
+  if (fv) fv.textContent = VERSION;
   showPage("page-welcome");
 }
 
