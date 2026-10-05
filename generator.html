@@ -155,7 +155,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <div class="welcome-grid">
     <div>
       <div class="tool-head" style="text-align:left">
-        <h1>🎓 录取捷报生成器 <span class="ver">v1.2.0 · 2026-10-06</span></h1>
+        <h1>🎓 录取捷报生成器 <span class="ver">v1.3.0 · 2026-10-06</span></h1>
       </div>
       <div class="info">
         <h3>这是什么</h3>
@@ -269,7 +269,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.2.0</footer>
+  <footer>自由未来 FreeFuture · v1.3.0</footer>
 </div>
 
 <script>
@@ -1097,47 +1097,127 @@ function afterOCR(lines) {
   showPage("page-confirm");
 }
 
+
+/* ---------- 多候选投票提取（v1.3.0） ----------
+ * rows: OCR 行；kind: "univ"|"major"
+ * 策略：滚动合并跨行断句 → 全模式扫候选 → 规范化计次 → 评分
+ * 评分 = 出现次数×10 + 完整性(词数≥4 +10) + 词典命中 +50
+ *        − 截断惩罚(of/University 结尾 −60，句中碎片开头 −30)
+ */
+function extractByVote(rows, kind) {
+  /* flat = 行序拼接：相邻行文本天然连续，跨行校名可被整体匹配；
+     🔴 不做滚动合并——重复行会制造 University of University 类伪影候选 */
+  const flat = rows.filter(Boolean).join(" ").replace(/\s+/g, " ");
+
+  const votes = new Map();
+  const add = (text, w) => {
+    const t = text.replace(/\s+/g, " ").trim().replace(/[.,;:]$/, "");
+    if (t.length < 10) return;
+    const k = t.toLowerCase().replace(/\bthe\b/g, "").replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
+    if (!k) return;
+    const v = votes.get(k) || { count: 0, longest: "" };
+    v.count += w;
+    if (t.length > v.longest.length) v.longest = t;
+    votes.set(k, v);
+  };
+
+  /* 停词表：标签值后遇到这些词必须停（防止贪婪吞下一句） */
+  const STOP = "Master|Bachelor|Doctor|Programme|Program|Course|Start|End|Date|Tuition|Deposit|Mode|University|Address|Student|Application|Congratulations|Thank|We|This|Please|Dear";
+  if (kind === "univ") {
+    /* 模式：University of X（of 后跟任意大写词，含 Hong Kong 双词地名）；
+       X University（Yale/Nanyang 型） */
+    let m;
+    const re1 = /(?:The\s+)?[A-Z][A-Za-z&.']*(?:\s+(?:of|de|the)\s+[A-Z][A-Za-z&.']*)*\s+University(?:\s+(?:of|de)\s+)?(?:[A-Z][A-Za-z&.']*)(?:\s+[A-Z][A-Za-z&.']*){0,3}/g;
+    while ((m = re1.exec(flat)) !== null) add(m[0], 1);
+    const re2 = /University\s+of\s+[A-Z][A-Za-z&.']*(?:\s+[A-Z][A-Za-z&.']*){0,3}/g;
+    while ((m = re2.exec(flat)) !== null) add(m[0], 1);
+  } else {
+    /* 专业：Master of X Programme/Program in Y；标签行 X；Master of X ( */
+    let m;
+    const re1 = new RegExp(
+      "(?:Master|Bachelor|Doctor)\\s+of\\s+[A-Za-z]+\\s+(?:Programme|Program)\\s+in\\s+" +
+      "([A-Z][A-Za-z ,&']+?)\\s*(?=\\(|[.,;]|\\s+(?:" + STOP + ")\\b|$)", "gi");
+    while ((m = re1.exec(flat)) !== null) add(m[1], 1);
+    const re2 = new RegExp(
+      "(?:Programme|Program|Course)(?:\\s+name)?\\s*(?:of\\s+study)?\\s*[:：]\\s*" +
+      "([A-Z][A-Za-z ,&']+?)\\s*(?=[.,;]|\\s+(?:" + STOP + ")\\b|$)", "gi");
+    while ((m = re2.exec(flat)) !== null) add(m[1], 1);
+    const re3 = /(?:Master|Bachelor)\s+of\s+([A-Z][A-Za-z ]{3,60}?)(?=\s*\()/g;
+    while ((m = re3.exec(flat)) !== null) add(m[1], 1);
+  }
+
+  /* ===== 第一层：词典锚点（最可靠——认识的学校直接定位原文） ===== */
+  const MAP = kind === "univ" ? UNIV_MAP : MAJOR_MAP;
+  for (const [re] of MAP) {
+    const m = flat.match(new RegExp(re.source, "i"));
+    if (!m || m.index == null) continue;
+    let st = m.index, en = m.index + m[0].length;
+    let prefix = "";
+    if (kind === "univ") {
+      /* 词级前扩：从 University/College/Institute 词起重建完整校名前缀
+         （Bristol 案例教训：正则前扩在 pre 开头无前导空格时失灵） */
+      const pre = flat.slice(Math.max(0, st - 45), st).trimStart();
+      const pw = pre.split(" ").filter(Boolean);
+      const ki = pw.findIndex(w => /university|college|institute/i.test(w));
+      if (ki >= 0) {
+        let start = ki;
+        if (start > 0 && /^The$/i.test(pw[start - 1])) start -= 1;   // The 冠词
+        prefix = pw.slice(start).join(" ") + " ";
+      } else if (/^The$/i.test(pw[pw.length - 1] || "")) {
+        prefix = "The ";                                             // Chinese University 型
+      }
+    }
+    const text = (prefix + flat.slice(st, en)).replace(/\s+/g, " ").trim();
+    if (text.length < (kind === "univ" ? 8 : 6)) continue;
+    if (kind === "univ") return text;
+    return { clean: text.replace(/\s*\([^)]*\)\s*$/, "").trim(), raw: text,
+             degHint: (text.match(/\((LLM|LLB|MSc|MA|MBA|MPhil|PhD)\)/i) || [])[1] || null,
+             sc: 999 };
+  }
+  /* ===== 第二层：投票回退（长尾学校/专业） ===== */
+  let best = null;
+  for (const [k, v] of votes) {
+    let sc = v.count * 10;
+    const words = v.longest.split(" ").length;
+    if (words >= (kind === "univ" ? 4 : 3)) sc += 10;
+    if (/(university|college|institute|programme|program|law|science|analytics|engineering|business|management|finance)/i.test(k)) sc += 15;
+    if (/(\bof|\bthe|university)$/i.test(k)) sc -= 60;              /* 截断惩罚 */
+    if (/^(analytics|law|business|science|of|in|and|the)/i.test(k)) sc -= 30;
+    if (kind === "univ") {
+      for (const [re] of UNIV_MAP) if (re.test(v.longest)) { sc += 50; break; }
+    } else {
+      for (const [re] of MAJOR_MAP) if (re.test(v.longest)) { sc += 30; break; }
+    }
+    if (!best || sc > best.sc) best = { sc, text: v.longest, count: v.count };
+  }
+  if (!best) return kind === "univ" ? "" : null;
+  const out = best.text;
+  if (kind === "major") {
+    const dm = out.match(/\((LLM|LLB|MSc|MA|MBA|MPhil|MRes|PhD|BSc|BA|MEng)\)/i);
+    const clean = out.replace(/\s*\([^)]*\)\s*$/, "").trim();
+    return { clean, raw: out, degHint: dm ? dm[1] : null, sc: best.sc };
+  }
+  return out;
+}
+
 function prefillFields(full) {
   const pick = re => { const m = full.match(re); return m ? m[1].trim() : ""; };
   const f = App.fields;
-  /* 校名：优先取「独立信头行」——整行含 University/College/Institute、
-     词数≤9、且不是句子开头虚词（Bristol 案例教训：贪婪正则会抓到
-     “…to study at the University” 整句） */
+  /* 校名/专业：多候选投票制（2026-10-06 用户定稿）——同一校名在 offer 里
+     常出现 2~4 次（标题断行/独立行/句中），全部抓取、规范化计次、按
+     [出现次数+完整性+词典命中] 评分，取最合理最完整的，绝不信第一个 */
   const rows = App.ocrLines.map(l => l.words.map(w => w.text).join(" ").trim());
-  let univEn = "";
-  for (let i = 0; i < rows.length; i++) {
-    let t = rows[i].replace(/\s+/g, " ").trim();
-    if (!/university|college|institute/i.test(t)) continue;
-    if (t.split(" ").length > 9) continue;
-    if (/^(congratulations|this|we|you|please|our|the|dear|dean|head)/i.test(t)) continue;
-    if (/^[A-Z][A-Za-z&.,'\- ]+$/.test(t)) {
-      /* 信头 logo 常把校名拆两行：University of / BRISTOL → 合并下一行全大写短语 */
-      if (/(university|college|institute|of)$/i.test(t) && rows[i + 1]) {
-        let nxt = rows[i + 1].replace(/\s+/g, " ").trim();
-        nxt = nxt.replace(/\S*[\[\]{}()]\S*/g, "").replace(/\s+/g, " ").trim();   // 先去 logo 噪声
-        if (/^[A-Z][A-Z\s&.]+$/.test(nxt) && nxt.length <= 30) t = t + " " + nxt;
-      }
-      /* 清理 logo 噪声：含括号符号的词 + 开头 1~2 字母噪声词 */
-      t = t.replace(/\S*[\[\]{}()]\S*/g, "").replace(/\s+/g, " ").trim();
-      t = t.replace(/^[A-Za-z]{1,2}\s+(?=[A-Z])/, "");
-      univEn = t; break;
-    }
-  }
-  if (!univEn) univEn = pick(/^([A-Z][A-Za-z&.,'\- ]{2,50}University[A-Za-z&.,'\- ]*)/m) || "";
-  f.en.univ = univEn;
-  /* 专业：标签族扩展（Programme name / Programme / Programme of Study / Course） */
-  const progRaw = pick(/programme(?:\s*name)?\s*(?:of\s*study)?\s*[:：]\s*([^\n]+)/i)
-               || pick(/course\s*(?:title)?\s*[:：]\s*([^\n]+)/i);
-  /* 学位缩写藏在专业名括号里的（Bristol：International Commercial Law (LLM)） */
+  f.en.univ = extractByVote(rows, "univ");
+  const prog = extractByVote(rows, "major");
+  /* 学位：标签行 > 专业名括号缩写 > 全文独立学位词 */
   let degEn = pick(/degree(?:\/diploma)?\s*[:：]\s*([^\n]+)/i)
            || pick(/\b(Master of [A-Za-z]+|Doctor of [A-Za-z]+|PhD)\b/i);
-  let majorEn = progRaw;
-  if (progRaw) {
-    const dm = progRaw.match(/\((LLM|LLB|MSc|MA|MBA|MPhil|MRes|PhD|BSc|BA|MEng)\)\s*$/i);
-    if (dm) { degEn = degEn || dm[1]; majorEn = progRaw.replace(/\s*\([^)]*\)\s*$/, "").trim(); }
+  if (prog && prog.raw) {
+    const dm = prog.raw.match(/\((LLM|LLB|MSc|MA|MBA|MPhil|MRes|PhD|BSc|BA|MEng)\)/i);
+    if (dm) degEn = degEn || dm[1];
   }
-  f.en.major = majorEn;
   f.en.degree = degEn;
+  f.en.major = prog ? prog.clean : "";
   /* 中文：内置常见对照 + 学位映射；查不到留空给用户填 */
   const m = mapUnivCn(f.en.univ);
   f.cn.univ = m.cn;
