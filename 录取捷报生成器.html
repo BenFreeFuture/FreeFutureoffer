@@ -100,6 +100,13 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   max-height:66vh;overflow-y:auto}
 #result-canvas{width:100%;display:block}
 .meta{font-size:14px;color:var(--ink)}
+.fn-row{display:flex;gap:8px;margin-bottom:6px}
+.fn-input{flex:1;border:1.5px solid #E5DED2;border-radius:8px;padding:8px 12px;
+  font-size:14px;font-weight:700;color:var(--brand-red);font-family:inherit;background:#FFFDF8}
+.fn-input:focus{outline:none;border-color:var(--cream);box-shadow:0 0 0 3px rgba(246,211,161,.3)}
+.fn-save{border:none;background:var(--paper);color:var(--brand-red);border-radius:8px;
+  padding:8px 16px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+.fn-save.saved{background:#3B6D11;color:#fff}
 .meta b{color:var(--brand-red)}
 #result-checks{list-style:none;margin:14px 0;font-size:13.5px}
 #result-checks li{margin:4px 0}
@@ -242,7 +249,13 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <div class="result-grid">
     <div class="preview"><canvas id="result-canvas"></canvas></div>
     <div>
-      <div class="meta" id="result-meta"></div>
+      <div class="meta">
+        <div class="fn-row">
+          <input id="result-filename" class="fn-input" spellcheck="false">
+          <button id="btn-rename" class="fn-save" type="button">保存</button>
+        </div>
+        <div id="result-spec"></div>
+      </div>
       <ul id="result-checks"></ul>
       <div class="btn-row">
         <button class="act-btn primary" id="btn-download">⬇ 下载到本机</button>
@@ -1360,7 +1373,7 @@ function validate() {
   return [
     { k: "等比缩放", v: "无变形", ok: true },
     { k: "核心图贴边", v: `左 ${card[0].toFixed(3)}in`, ok: true },
-    { k: "垂直居中", v: "白卡内居中", ok: true },
+    { k: "顶部对齐", v: "紧贴冠名下方", ok: true },
     { k: "底边 ≤ 白卡底线", v: `${card[1] + card[3]}in`, ok: true },
     { k: "图层数", v: App.T.layers.length + " 层完整", ok: true },
   ];
@@ -1374,6 +1387,18 @@ function initResult() {
   /* 归档：接口预留（云函数部署后接入微盘 API） */
   $("#btn-archive").addEventListener("click", () => {
     alert("归档到微盘：接口已预留，待部署云函数后开放。\n当前可先下载到本机。");
+  });
+  /* 重命名：点保存后新文件名生效（自动补 .jpg），下载即用新名 */
+  $("#btn-rename").addEventListener("click", () => {
+    let name = $("#result-filename").value.trim();
+    if (!name) { alert("文件名不能为空"); return; }
+    if (!/\.jpe?g$/i.test(name)) name += ".jpg";
+    App.resultName = name;
+    $("#result-filename").value = name;
+    const b = $("#btn-rename");
+    b.textContent = "✓ 已保存";
+    b.classList.add("saved");
+    setTimeout(() => { b.textContent = "保存"; b.classList.remove("saved"); }, 2000);
   });
 }
 
@@ -1402,10 +1427,20 @@ async function showResult(checks) {
   const major = App.fields.lang === "cn"
     ? ($("#f-major").value.trim() + $("#f-degree").value.trim())
     : ($("#f-major").value.trim());
-  App.resultName = univ + (major ? "_" + major : "") + ".jpg";
+  /* 文件名：YYMMDD_学校_专业.jpg（2026-10-06 用户定稿） */
+  const now = new Date();
+  const datePrefix = String(now.getFullYear()).slice(2) +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0");
+  App.resultName = datePrefix + "_" + univ + (major ? "_" + major : "") + ".jpg";
 
-  $("#result-meta").innerHTML =
-    `${App.resultName}<br>3015 × 5360 px · ≈301dpi · ${mb} MB`;
+  const fnInput = $("#result-filename");
+  fnInput.value = App.resultName;
+  const saveBtn = $("#btn-rename");
+  saveBtn.textContent = "保存";
+  saveBtn.classList.remove("saved");
+  $("#result-spec").textContent =
+    `${r.canvas.width} × ${r.canvas.height} px · ≈240dpi · ${mb} MB`;
   $("#result-checks").innerHTML = checks
     .map(c => `<li><span class="ok">✓</span> ${c.k}：${c.v}</li>`).join("");
 
