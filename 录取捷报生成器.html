@@ -179,7 +179,8 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
       <div class="privacy">
         <b>隐私承诺</b>：学生材料全程在你的浏览器内处理，<b>零上传、零留痕</b>；
-        关闭页面数据即消失。仅在点击「归档到微盘」时，已打码成品才会上传。
+        关闭页面数据即消失。仅在点击「归档到微盘」时，<b>已打码成品</b>才会上传，
+        存进公司微盘「录取捷报 / WB自动存档」——同一张图最多保留 5 份，多出来的自动挤掉最早那份。
       </div>
     </div>
 
@@ -198,7 +199,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.10.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.11.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -317,13 +318,15 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
         <button class="act-btn ghost" id="btn-again">🔁 再生成一张</button>
         <button class="act-btn ghost" id="btn-edit">✏️ 回去改文字</button>
       </div>
+      <!-- v1.11.0 归档状态：成功显示存了几份，失败显示原因 -->
+      <div id="archive-note" hidden style="margin:8px 0 0;font-size:13px;line-height:1.6"></div>
       <div id="history-wrap">
         <div class="sec-title">📁 本地历史（仅存此浏览器，最近 20 张）</div>
         <div id="history"></div>
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.10.0</footer>
+  <footer>自由未来 FreeFuture · v1.11.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -2604,8 +2607,9 @@ const MAJOR_IDX = [
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.10.0";
+const VERSION = "v1.11.0";
 const CHANGELOG = [
+  { v: "v1.11.0", t: "2026-10-06", n: "☁️ 「归档到微盘」正式接通企业微信微盘：点一下，已打码成品直接存进 微盘/录取捷报/WB自动存档，不用先下载再传。同一张图最多留 5 份，第 6 次自动挤掉最早那份（网页刷新、改名都不影响上限）。凭据只放在公司服务器，页面里没有密钥" },
   { v: "v1.10.0", t: "2026-10-06", n: "🇨🇳 中文录取通知书也能认了：识别质量差时自动换中文模型（约 2MB，仅中文 offer 才下载）→「港理工 管理学博士项目（DMgt）」这类中文专业名/学位名直接填好；英文侧补回 Doctor of Management / Management。英文侧同时修掉两个老毛病：伯明翰「Programme Title: MSc Robotics FT」专业不再空白（现自动出 机器人学），学位不再被正文里 will be sent to you in due course 的 be 误判成「工程学士」（现正确为 理学硕士）" },
   { v: "v1.8.0", t: "2026-10-06", n: "🎓 学位字典上线（用户汇总表）：本科/硕士/博士 110+ 条目，覆盖英文全称与全部缩写变体（M.Sc./LL.M./Ph.D./MBBS/JD/SJD/PharmD…）——只写缩写也能认出学位；专业名自动剥离学位前缀（MSc Data Science → 数据科学）；日常英文词不再被误认成学位" },
   { v: "v1.7.0", t: "2026-10-06", n: "📦 真正的「一个链接就能用」：HTML 自带全部程序（母版/引擎/字体/识别库），只有体积大的识别模型联网按需下载——四源并行测速自动挑最快的（同站 / 国内镜像 / Pages 同源 / 备选），不用再附带任何文件夹" },
@@ -2618,6 +2622,14 @@ const CHANGELOG = [
   { v: "v1.1.0", t: "2026-10-06", n: "生日/多行地址自动打码，电话识别更准，识别引擎稳定性升级" },
   { v: "v1.0.0", t: "2026-10-05", n: "🎉 首发版：OCR 自动识别 + 10 类隐私自动打码 + 彩带飘落动画 + 301dpi 一键下载" },
 ];
+
+/* ---------- 微盘归档中转（v1.11.0）----------
+   页面是纯静态的 GitHub Pages，没有后端、也没有密钥。
+   归档走公司自己的中转服务（腾讯云 43.156.63.80，域名 wedrive.freefuture.com.cn），
+   corpid / corpsecret 只写在服务器上，这里只有一个「防止随手扫描」的普通口令。 */
+const ARCHIVE_API = "https://wedrive.freefuture.com.cn";
+const ARCHIVE_TOKEN = "b68ce52e44184d881188db6158fc787f";
+const ARCHIVE_MAX = 5;          // 同一张图在微盘里最多保留的份数
 
 const App = {
   errLog: [],
@@ -2634,6 +2646,8 @@ const App = {
   },
   renderer: null,
   resultBlob: null,
+  resultFP: "",               // 成品图指纹（同一张 offer 恒定，用于 5 份限额）
+  archiveCopies: 0,           // 该文件已在微盘存了几份
   univGuess: null,            // 校名识别/补全结果 { name, how, note }
   ocrMode: "unavailable",     // ok | unavailable（离线降级）
 };
@@ -4420,10 +4434,7 @@ function initResult() {
   $("#btn-download").addEventListener("click", download);
   $("#btn-again").addEventListener("click", () => showPage("page-welcome"));
   $("#btn-edit").addEventListener("click", () => showPage("page-confirm"));
-  /* 归档：接口预留（云函数部署后接入微盘 API） */
-  $("#btn-archive").addEventListener("click", () => {
-    alert("归档到微盘：接口已预留，待部署云函数后开放。\n当前可先下载到本机。");
-  });
+  $("#btn-archive").addEventListener("click", archiveToWedrive);
   /* 重命名：点保存后新文件名生效（自动补 .jpg），下载即用新名 */
   $("#btn-rename").addEventListener("click", () => {
     let name = $("#result-filename").value.trim();
@@ -4483,7 +4494,96 @@ async function showResult(checks) {
   await saveHistory(univ, major);
   renderHistory();
   $("#btn-download").textContent = `⬇ 下载到本机（${mb} MB）`;
+  /* 归档状态复位：同一张 offer 重新生成不算新文件，微盘侧仍按 5 份上限滚动 */
+  App.resultFP = await computeFP();
+  App.archiveCopies = 0;
+  const ab = $("#btn-archive");
+  ab.disabled = false;
+  ab.textContent = "☁️ 归档到微盘";
+  setArchiveNote("", "");
   showPage("page-result");
+}
+
+/* ---------- 微盘归档（v1.11.0）---------- */
+/* 指纹：源 offer 缩略图 + 文案 → 同一份 offer 反复生成指纹恒定；
+   不用成品图算，因为彩带每帧位置不同会让字节变。 */
+async function computeFP() {
+  const parts = [];
+  try {
+    const src = App.processed || App.offerImg;
+    if (src) {
+      const c = document.createElement("canvas");
+      c.width = 64; c.height = 64;
+      const cx = c.getContext("2d");
+      cx.drawImage(src, 0, 0, 64, 64);
+      parts.push(c.toDataURL("image/jpeg", 0.6));
+    }
+    if (App.offerImg) parts.push(App.offerImg.naturalWidth + "x" + App.offerImg.naturalHeight);
+  } catch (e) { /* 取不到图就只按文案算 */ }
+  const f = App.fields;
+  parts.push([f.cn.univ, f.cn.major, f.cn.degree,
+              f.en.univ, f.en.major, f.en.degree].join("|"));
+  return (await sha256hex(parts.join("#"))).slice(0, 12);
+}
+/* SHA-256；无 crypto.subtle（老浏览器 / 非 HTTPS）时退到 FNV-1a，够用 */
+async function sha256hex(str) {
+  try {
+    if (window.crypto && crypto.subtle && crypto.subtle.digest) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+  } catch (e) { /* fallthrough */ }
+  let h = 0x811c9dc5;                                     // FNV-1a 32bit
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h + (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24)) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+function blobToB64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",").pop() || "");
+    r.onerror = () => rej(new Error("读取成品图失败"));
+    r.readAsDataURL(blob);
+  });
+}
+function setArchiveNote(text, kind) {
+  const n = $("#archive-note");
+  if (!n) return;
+  n.textContent = text;
+  n.hidden = !text;
+  n.style.color = kind === "err" ? "#b3261e" : (kind === "ok" ? "#1f7a3d" : "#666");
+}
+async function archiveToWedrive() {
+  const btn = $("#btn-archive");
+  if (!App.resultBlob) { setArchiveNote("还没有成品图，先生成一张再归档", "err"); return; }
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = "☁️ 归档中…";
+  setArchiveNote("正在上传到企业微信微盘…", "");
+  try {
+    const b64 = await blobToB64(App.resultBlob);
+    const resp = await fetch(ARCHIVE_API + "/api/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Archive-Token": ARCHIVE_TOKEN },
+      body: JSON.stringify({ filename: App.resultName, fp: App.resultFP, b64: b64 }),
+    });
+    const j = await resp.json().catch(() => null);
+    if (!j || !j.ok) throw new Error((j && j.err) || ("中转服务返回 HTTP " + resp.status));
+    App.archiveCopies = j.copies || 1;
+    const max = j.max_copies || ARCHIVE_MAX;
+    btn.textContent = `✓ 已归档 ${j.copies}/${max}`;
+    const tail = (j.removed && j.removed.length)
+      ? `（已达上限，自动清掉最早 ${j.removed.length} 份）` : "";
+    setArchiveNote(`已存入 微盘 / 录取捷报 / WB自动存档：${j.filename} · 同一张图保留 ${j.copies}/${max} 份${tail}`, "ok");
+  } catch (e) {
+    btn.textContent = label;
+    setArchiveNote("归档失败：" + (e.message || e) + " — 可先下载到本机再手动传微盘", "err");
+    App.errLog.push("归档失败: " + (e.message || e));
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* 定格彩带编码：t 为动画相位，二分质量压到 ≤2MB */
