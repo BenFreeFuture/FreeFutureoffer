@@ -198,7 +198,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.7.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.8.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -322,7 +322,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.7.0</footer>
+  <footer>自由未来 FreeFuture · v1.8.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -1035,12 +1035,13 @@ window.FreePoster = {
 };
 </script>
 <script>/* ============================================================
- * FreePoster App v1.7.0 —— 三页交互逻辑 + 更新日志 + Bug 通报
+ * FreePoster App v1.8.0 —— 三页交互逻辑 + 更新日志 + Bug 通报
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.7.0";
+const VERSION = "v1.8.0";
 const CHANGELOG = [
+  { v: "v1.8.0", t: "2026-10-06", n: "🎓 学位字典上线（用户汇总表）：本科/硕士/博士 110+ 条目，覆盖英文全称与全部缩写变体（M.Sc./LL.M./Ph.D./MBBS/JD/SJD/PharmD…）——只写缩写也能认出学位；专业名自动剥离学位前缀（MSc Data Science → 数据科学）；日常英文词不再被误认成学位" },
   { v: "v1.7.0", t: "2026-10-06", n: "📦 真正的「一个链接就能用」：HTML 自带全部程序（母版/引擎/字体/识别库），只有体积大的识别模型联网按需下载——四源并行测速自动挑最快的（同站 / 国内镜像 / Pages 同源 / 备选），不用再附带任何文件夹" },
   { v: "v1.6.0", t: "2026-10-06", n: "🛠️ 修复「OCR 引擎加载不上」（jsDelivr 在国内不可达 → 字段全空）：识别库内嵌 + core/语言包自托管 + 国内镜像三源自动切换；识别失败不再默默跳过，会写进诊断日志" },
   { v: "v1.5.0", t: "2026-10-06", n: "🎯 新增大学指纹库（150+ 校：缩写 / edu 邮箱域名 / 官网核心词）——只抓到关键词或简写（Chicago / UCLA / UIC / UBC）也会自动补全校名并提示核对；页面带官网域名时按域名铁证识别；修复「Master in Public Policy ↵ Program」型跨行专业漏抓" },
@@ -1442,22 +1443,21 @@ function prefillFields(full) {
   f.en.univ = ru.name || univRaw;
   App.univGuess = ru;
   const prog = extractByVote(rows, "major");
-  /* 学位：标签行 > 专业名括号缩写 > 全文独立学位词 */
-  let degEn = pick(/degree(?:\/diploma)?\s*[:：]\s*([^\n]+)/i)
-           || pick(/\b(Master (?:of|in) [A-Za-z]+(?: [A-Za-z]+)?|Doctor of [A-Za-z]+|PhD)\b/i)
-           || pick(/\b(Bachelor (?:of|in) [A-Za-z]+(?: [A-Za-z]+)?)\b/i);
-  if (prog && prog.raw) {
-    const dm = prog.raw.match(/\((LLM|LLB|MSc|MA|MBA|MPhil|MRes|PhD|BSc|BA|MEng)\)/i);
-    if (dm) degEn = degEn || dm[1];
+  /* 学位：标签行 > 全文全称 > 全文缩写（DEGREE_DICT 本科/硕士/博士全覆盖，v1.8.0） */
+  let deg = scanDegree(flat);
+  if (!deg && prog && prog.raw) {                              // 兜底：专业名括号里的缩写
+    const dm = prog.raw.match(/\(([A-Za-z.]{2,8})\)/);
+    if (dm) deg = lookupDegree(dm[1]);
   }
-  f.en.degree = (degEn || "").replace(/\s+in$/i, "").trim();   // "Master of Arts in" → "Master of Arts"
+  f.en.degree = deg ? deg.en : "";
+  App.degGuess = deg;
   f.en.major = prog ? prog.clean : "";
   /* 中文：内置常见对照 + 学位映射；查不到留空给用户填 */
   const m = mapUnivCn(f.en.univ);
   f.cn.univ = m.cn;
   App.fields.flag = m.flag;            // 国旗 emoji（2026-10-05 恢复）
   f.cn.major = mapMajorCn(f.en.major);
-  f.cn.degree = mapDegreeCn(f.en.degree);
+  f.cn.degree = deg ? deg.cn : mapDegreeCn(f.en.degree);
 }
 
 /* ============================================================
@@ -2084,11 +2084,228 @@ const MAJOR_MAP = [
   [/management/i, "管理学"], [/engineering/i, "工程"],
 ];
 /* 专业名清理：去尾部 Program/Programme、去学位词前缀残留、合并空格 */
+/* ============================================================
+ * 学位字典 DEGREE_DICT（v1.8.0，2026-10-06 用户提供对照表）
+ * ------------------------------------------------------------
+ * 覆盖本科 / 硕士 / 博士的英文全称与全部常见缩写变体（带点、不带点、
+ * 大小写、英式美式差异），用于「program 识别不出来」时按学位反查。
+ *
+ * 字段：[规范英文全称, 缩写正则, 中文学位名, 层次 U/M/D, risky, notIf?]
+ *   risky=1：缩写是日常英文词或极易撞车（DO/ME/MM/BM/OD/ND/MIT/DA/DD…），
+ *            必须靠上下文层级词（bachelor/master/doctor）佐证才敢认
+ *   notIf ：命中该正则则放弃这条（如 MIT 在麻省理工语境下不是学位）
+ *
+ * 🔴 排列即优先级：长全称在前（Bachelor of Science in Engineering 必须早于
+ *    Bachelor of Science），共用缩写的谁更常见谁在前（BE→工程学士先于教育学学士）。
+ * ============================================================ */
+const DEGREE_DICT = [
+  /* ---------- 本科 U ---------- */
+  ["Bachelor of Medicine, Bachelor of Surgery", /\b(?:mbbs|mbchb|mbbch|mbchba)\b/, "医学学士与外科学士", "U", 0],
+  ["Bachelor of Science in Nursing", /\b(?:bsn|bscn|bscnurs)\b/, "护理理学学士", "U", 0],
+  ["Bachelor of Business Administration", /\bbba\b/, "工商管理学士", "U", 0],
+  ["Bachelor of Arts and Sciences", /\bbasc\b/, "文理学士", "U", 0],
+  ["Bachelor of General Studies", /\bbgs\b/, "通识学士", "U", 1],
+  ["Bachelor of Liberal Studies", /\bbls\b/, "通识教育学士", "U", 1],
+  ["Bachelor of Interdisciplinary Studies", /\bbis\b/, "综合研究学士", "U", 1],
+  ["Bachelor of Professional Studies", /\bbps\b/, "专业研究学士", "U", 1],
+  ["Bachelor of Science in Engineering", /\b(?:bsceng|bse|bseng)\b/, "工程科学学士", "U", 0],
+  ["Bachelor of Engineering", /\b(?:beng|be)\b/, "工程学士", "U", 1],   // "be" 是英文常用词
+  ["Bachelor of Technology", /\bbtech\b/, "技术学士", "U", 0],
+  ["Bachelor of Computer Science", /\b(?:bcs|bcompsc|bcompsci)\b/, "计算机科学学士", "U", 0],
+  ["Bachelor of Information Technology", /\bbit\b/, "信息技术学士", "U", 1],
+  ["Bachelor of Dental Surgery", /\bbds\b/, "牙科外科学学士", "U", 0],
+  ["Bachelor of Public Health", /\b(?:bsph|bph)\b/, "公共卫生学士", "U", 1],
+  ["Bachelor of Social Work", /\bbsw\b/, "社会工作学士", "U", 0],
+  ["Bachelor of Social Science", /\b(?:bsocsc|bsosc|bssc)\b/, "社会科学学士", "U", 0],
+  ["Bachelor of Nursing", /\bbnurs\b/, "护理学士", "U", 0],
+  ["Bachelor of Pharmacy", /\bbpharm\b/, "药学学士", "U", 0],
+  ["Bachelor of Fine Arts", /\bbfa\b/, "美术学士", "U", 0],
+  ["Bachelor of Architecture", /\bbarch\b/, "建筑学学士", "U", 0],
+  ["Bachelor of Education", /\bbed\b/, "教育学学士", "U", 0],
+  ["Bachelor of Economics", /\b(?:becon|bec)\b/, "经济学学士", "U", 0],
+  ["Bachelor of Commerce", /\b(?:bcom|bcomm)\b/, "商学士", "U", 0],
+  ["Bachelor of Business Science", /\bbus(sc|sci)\b/, "商业科学学士", "U", 0],
+  ["Bachelor of Business", /\bbus\b/, "商学士", "U", 1],
+  ["Bachelor of Accounting", /\b(?:bacc|bacy)\b/, "会计学士", "U", 0],
+  ["Bachelor of Finance", /\bbfin\b/, "金融学士", "U", 0],
+  ["Bachelor of Design", /\bbdes\b/, "设计学士", "U", 0],
+  ["Bachelor of Music", /\bbmus\b/, "音乐学士", "U", 0],
+  ["Bachelor of Journalism", /\bbj\b/, "新闻学学士", "U", 1],
+  ["Bachelor of Theology", /\b(?:bth|btheol|thb)\b/, "神学学士", "U", 0],
+  ["Bachelor of Divinity", /\b(?:bdiv|bd)\b/, "神学学士", "U", 1],
+  ["Bachelor of Civil Law", /\bbcl\b/, "民法学士", "U", 0],
+  ["Bachelor of Laws", /\bllb\b/, "法学学士", "U", 0],
+  ["Bachelor of Medicine", /\b(?:bm|mb)\b/, "医学学士", "U", 1],
+  ["Bachelor of Surgery", /\b(?:bch|bchir)\b/, "外科学学士", "U", 1],
+  ["Bachelor of Science", /\b(?:bsc|bs|sb|scb)\b/, "理学学士", "U", 0],
+  ["Bachelor of Arts", /\b(?:ba|ab)\b/, "文学学士", "U", 1],
+  /* ---------- 硕士 M ---------- */
+  ["Executive Master of Business Administration", /\bemba\b/, "高级管理人员工商管理硕士", "M", 0],
+  ["Master of Business Administration", /\bmba\b/, "工商管理硕士", "M", 0],
+  ["Master of Science in Engineering", /\b(?:mse|mseng)\b/, "工程科学硕士", "M", 0],
+  ["Master of Computer Science", /\bmcs\b/, "计算机科学硕士", "M", 0],
+  ["Master of Public Administration", /\bmpa\b/, "公共管理硕士", "M", 0],
+  ["Master of Public Policy", /\bmpp\b/, "公共政策硕士", "M", 0],
+  ["Master of Public Health", /\bmph\b/, "公共卫生硕士", "M", 0],
+  ["Master of Health Science", /\bmhs\b/, "健康科学硕士", "M", 0],
+  ["Master of Medical Science", /\bmmedsc\b/, "医学科学硕士", "M", 0],
+  ["Master of Dental Surgery", /\bmds\b/, "牙科外科学硕士", "M", 0],
+  ["Master of Landscape Architecture", /\bmla\b/, "景观建筑学硕士", "M", 0],
+  ["Master of Geographic Information Systems", /\bmgis\b/, "地理信息系统硕士", "M", 0],
+  ["Master of Theological Studies", /\bmts\b/, "神学研究硕士", "M", 1],
+  ["Master of Divinity", /\bmdiv\b/, "神学硕士", "M", 0],
+  ["Master of Architecture", /\bmarch\b/, "建筑学硕士", "M", 0],
+  ["Master of Social Work", /\bmsw\b/, "社会工作硕士", "M", 0],
+  ["Master of Nursing", /\b(?:msn|mnurs)\b/, "护理硕士", "M", 0],
+  ["Master of Fine Arts", /\bmfa\b/, "美术硕士", "M", 0],
+  ["Master of Education", /\bmed\b/, "教育学硕士", "M", 0],
+  ["Master of Engineering", /\bmeng\b/, "工程硕士", "M", 0],
+  ["Master of Economics", /\bmecon\b/, "经济学硕士", "M", 0],
+  ["Master of Accounting", /\b(?:macc|macct)\b/, "会计硕士", "M", 0],
+  ["Master of Finance", /\bmfin\b/, "金融硕士", "M", 0],
+  ["Master of Comparative Law", /\bmcl\b/, "比较法硕士", "M", 0],
+  ["Master of Legal Studies", /\bmls\b/, "法律研究硕士", "M", 1],
+  ["Master of Studies in Law", /\bmsl\b/, "法律研究硕士", "M", 0],
+  ["Master of Philosophy", /\b(?:mphil|phm)\b/, "哲学硕士", "M", 0],
+  ["Master of Research", /\bmres\b/, "研究硕士", "M", 0],
+  ["Master of Theology", /\b(?:mtheol|thm)\b/, "神学硕士", "M", 0],
+  ["Master of Music", /\bmmus\b/, "音乐硕士", "M", 0],
+  ["Master of Journalism", /\bmj\b/, "新闻学硕士", "M", 1],
+  ["Master of Information Technology", /\bmit\b/, "信息技术硕士", "M", 1,
+    /\bmassachusetts institute|institute of technology\b/],   // MIT 先当校名，不当学位
+  ["Master of Science", /\b(?:msc|ms|scm)\b/, "理学硕士", "M", 0],
+  /* ⚠️ 不收 A.M.：归一化后 "I am delighted" 的 am 会被当成文学硕士（Harvard offer 实测踩过） */
+  ["Master of Arts", /\bma\b/, "文学硕士", "M", 0],
+  ["Master of Laws", /\bllm\b/, "法学硕士", "M", 0],
+  /* ---------- 博士 D ---------- */
+  ["Doctor of Philosophy", /\b(?:phd|dphil|dph)\b/, "博士", "D", 0],
+  ["Doctor of Business Administration", /\bdba\b/, "工商管理博士", "D", 0],
+  ["Doctor of Engineering", /\b(?:deng|engd|des)\b/, "工程博士", "D", 1],
+  ["Doctor of Education", /\b(?:edd|ded)\b/, "教育学博士", "D", 0],
+  ["Doctor of Nursing Science", /\bdnsc\b/, "护理科学博士", "D", 0],
+  ["Doctor of Public Health", /\b(?:drph|dph)\b/, "公共卫生博士", "D", 0],
+  ["Doctor of Social Science", /\bdss\b/, "社会科学博士", "D", 0],
+  ["Doctor of Hebrew Letters", /\bdhl\b/, "希伯来文学博士", "D", 0],
+  ["Doctor of Musical Arts", /\bdma\b/, "音乐艺术博士", "D", 0],
+  ["Doctor of Music Education", /\bdme\b/, "音乐教育博士", "D", 0],
+  ["Doctor of Modern Languages", /\bdml\b/, "现代语言博士", "D", 0],
+  ["Doctor of Veterinary Medicine", /\bdvm\b/, "兽医学博士", "D", 0],
+  ["Doctor of Physical Therapy", /\bdpt\b/, "物理治疗博士", "D", 0],
+  ["Doctor of Nursing Practice", /\bdnp\b/, "护理实践博士", "D", 0],
+  ["Doctor of Osteopathic Medicine", /\bdo\b/, "骨科医学博士", "D", 1],
+  ["Doctor of Dental Surgery", /\bdds\b/, "牙科外科学博士", "D", 0],
+  ["Doctor of Dental Medicine", /\bdmd\b/, "牙科医学博士", "D", 0],
+  ["Doctor of Pharmacy", /\bpharmd\b/, "药学博士", "D", 0],
+  ["Doctor of Psychology", /\bpsyd\b/, "心理学博士", "D", 0],
+  ["Doctor of Optometry", /\bod\b/, "验光博士", "D", 1],
+  ["Doctor of Naturopathic Medicine", /\bnd\b/, "自然疗法医学博士", "D", 1],
+  ["Juris Doctor", /\bjd\b/, "法律博士", "D", 0],
+  ["Doctor of Juridical Science", /\b(?:sjd|jsd)\b/, "司法学博士", "D", 0],
+  ["Doctor of Canon Law", /\bjcd\b/, "教会法博士", "D", 0],
+  ["Doctor of Comparative Law", /\bdcl\b/, "比较法博士", "D", 0],
+  ["Doctor of Laws", /\blld\b/, "法学博士", "D", 0],
+  ["Doctor of Sacred Theology", /\bstd\b/, "神圣神学博士", "D", 1],
+  ["Doctor of Ministry", /\bdmin\b/, "教牧博士", "D", 0],
+  ["Doctor of Divinity", /\bdd\b/, "神学博士", "D", 1],
+  ["Doctor of Theology", /\b(?:thd|dtheol)\b/, "神学博士", "D", 0],
+  ["Doctor of Science", /\b(?:dsc|scd)\b/, "科学博士", "D", 0],
+  ["Doctor of Arts", /\bda\b/, "文学博士", "D", 1],
+  ["Doctor of Design", /\bddes\b/, "设计博士", "D", 0],
+  ["Doctor of Fine Arts", /\bdfa\b/, "美术博士", "D", 0],
+  ["Doctor of Medicine", /\bmd\b/, "医学博士", "D", 0],
+];
+
+/* 全称 → 正则（一次性预编译） */
+const DEG_FULL_RE = DEGREE_DICT.map(d =>
+  new RegExp("\\b" + d[0].toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ") + "\\b"));
+/* 用于从「专业名」里剥掉学位缩写：MSc Data Science → Data Science */
+const DEG_ABBR_STRIP = new RegExp("\\b(?:" + [
+  "mbbs","mbchb","mbbch","bsn","bscn","bba","basc","bgs","bls","bis","bps","bse","beng","btech",
+  "bcs","bit","bds","bsph","bph","bsw","bsocsc","bnurs","bpharm","bfa","barch","bed","becon","bec",
+  "bcom","bcomm","bacc","bacy","bfin","bdes","bmus","bth","bdiv","bcl","llb","bch","bsc","bcompsc",
+  "emba","mba","mse","mcs","mpa","mpp","mph","mhs","mmedsc","mds","mla","mgis","mts","mdiv","march",
+  "msw","msn","mnurs","mfa","med","meng","mecon","macc","mfin","mcl","mls","msl","mphil","phm","mres",
+  "mtheol","thm","mmus","msc","scm","llm","phd","dphil","dsc","scd","edd","ded","dba","deng","engd",
+  "dnsc","drph","dss","dhl","dma","dme","dml","dvm","dpt","dnp","dds","dmd","pharmd","psyd","sjd",
+  "jsd","jcd","dcl","lld","dmin","dtheol","thd","ddes","dfa","md",
+].join("|") + ")\\b", "gi");
+
+/* 归一化：去点、只剩字母与空格（"M.Sc." → "msc"，"Ph.D." → "phd"） */
+function normDeg(s) {
+  return (s || "").toLowerCase().replace(/\./g, "").replace(/[^a-z]/g, " ").replace(/\s+/g, " ").trim();
+}
+/* 学位语境词：risky 缩写（be/do/me/od/nd/da/dd/des/mit…）必须靠它佐证，
+   否则 "I am delighted"、"you will be able" 这类日常英文会被误认成学位 */
+const DEG_CTX_NEAR = /bachelor|master|doctor|degree|programme|program|awarded|admission|admitted|course|study|diploma|faculty|school of|graduate/i;
+/* 层级上下文：供 risky 缩写佐证；出现层级词时按层级判定，都没有时只要有学位语境就放行 */
+function degCtx(n) {
+  const near = DEG_CTX_NEAR.test(n);
+  const U = /\bbachelor|undergraduate/.test(n);
+  const M = /\bmaster|postgraduate/.test(n);
+  const D = /\bdoctor|doctoral/.test(n);
+  const any = U || M || D;
+  return { U: near && (any ? U : true), M: near && (any ? M : true), D: near && (any ? D : true) };
+}
+/* 学位查表：全称优先 → 缩写（risky 需上下文佐证）→ 返回 {cn, en, level, via} */
+function lookupDegree(text) {
+  const n = normDeg(text);
+  if (!n) return null;
+  for (let i = 0; i < DEGREE_DICT.length; i++) {
+    if (DEG_FULL_RE[i].test(n)) {
+      const d = DEGREE_DICT[i];
+      return { cn: d[2], en: d[0], level: d[3], via: "full" };
+    }
+  }
+  const ctx = degCtx(n);
+  for (const d of DEGREE_DICT) {
+    if (!d[1].test(n)) continue;
+    if (d[4] && !ctx[d[3]]) continue;            // risky 缩写缺层级佐证 → 不认
+    if (d[5] && d[5].test(n)) continue;          // 命中排除条件（MIT 当校名时）
+    return { cn: d[2], en: d[0], level: d[3], via: "abbr" };
+  }
+  return null;
+}
+/* 从整篇 OCR 文本里扫学位：标签行 → 全文全称 → 全文缩写
+   全文缩写要求附近 60 字符内有学位/项目语境，避免把随手一个 "MA" 当学位 */
+function scanDegree(flat) {
+  const lab = (flat || "").match(/degree(?:\s*\/\s*diploma)?(?:\s+awarded)?\s*[:：]\s*([^\n\r]{2,60})/i);
+  if (lab) { const d = lookupDegree(lab[1]); if (d) return d; }
+  const whole = lookupDegree(flat || "");
+  if (whole && whole.via === "full") return whole;
+  const n = normDeg(flat || "");
+  if (n) {
+    for (const d of DEGREE_DICT) {
+      const re = new RegExp(d[1].source, "g");
+      let m;
+      while ((m = re.exec(n)) !== null) {
+        /* 窗口必须取归一化串：m.index 是 n 上的位置，取 flat 会错位（标点被剥掉了） */
+        const win = n.substr(Math.max(0, m.index - 60), 140);
+        if (!DEG_CTX_NEAR.test(win)) continue;
+        if (d[5] && d[5].test(n)) continue;
+        if (d[4] && !degCtx(n)[d[3]]) continue;
+        return { cn: d[2], en: d[0], level: d[3], via: "abbr" };
+      }
+    }
+  }
+  /* 兜底：无缩写的专业型学位 "Master in Public Policy"（Harvard Kennedy / HKS 实测） */
+  const mk = n.match(/\bmaster\s+(?:in|of)\s+([a-z ]{3,40}?)(?:\s+program|\s+programme|$)/);
+  if (mk) {
+    const sub = mk[1].trim(), cn = mapMajorCn(sub);
+    if (cn) return { cn: cn + "硕士", en: "Master in " + sub, level: "M", via: "derive" };
+  }
+  return whole;
+}
+
 function cleanMajor(s) {
   let t = (s || "").replace(/\s+/g, " ").trim();
   t = t.replace(/\s*[（(][^)）]*[)）]\s*$/, "");                       // 尾部括号（学位缩写另取）
   t = t.replace(/\s+(?:Programme|Program|Course|Track|Concentration|Specialisation|Specialization)\s*$/i, "");
+  /* "Master of Science in Business Analytics" → "Business Analytics"（学位另取） */
+  const din = t.match(/^(?:Master|Bachelor|Doctor)(?:\s+of|\s+in)\s+[A-Za-z ]+?\s+in\s+(.+)$/i);
+  if (din) t = din[1];
   t = t.replace(/^(?:Science|Arts|Engineering|Laws|Philosophy|Education|Business Administration|Studies)\s+in\s+/i, "");
+  /* 剥掉混进专业名的学位缩写："MSc Data Science" → "Data Science" */
+  t = t.replace(DEG_ABBR_STRIP, " ").replace(/\s+/g, " ").trim();
   t = t.replace(/[\s,&;:]+$/, "").replace(/\s+/g, " ").trim();
   return t;
 }
@@ -2098,26 +2315,15 @@ function mapMajorCn(en) {
   return "";
 }
 function mapDegreeCn(en) {
-  const e = (en || "").toLowerCase();
-  if (/llm|master of laws/.test(e)) return "法学硕士";
-  if (/llb|bachelor of laws/.test(e)) return "法学学士";
-  /* 专业硕士（MPP/MPA/MPH 等只写「Master in X」，不带 Science/Arts） */
-  if (/public policy|\bmpp\b/.test(e)) return "公共政策硕士";
-  if (/public administration|\bmpa\b/.test(e)) return "公共管理硕士";
-  if (/public health|\bmph\b/.test(e)) return "公共卫生硕士";
-  if (/international affairs|\bmia\b/.test(e)) return "国际事务硕士";
-  const mm = e.match(/master (?:in|of) ([a-z ]+?)(?:\s+program|\s+programme|$)/);
-  if (mm) {                                   // Master in Public Policy 型
+  if (!en) return "";
+  /* Master in Public Policy 型：专业名即学位名 */
+  const mm = (en || "").toLowerCase().match(/master (?:in|of) ([a-z ]+?)(?:\s+program|\s+programme|$)/);
+  if (mm) {
     const cn = mapMajorCn(mm[1].trim());
     if (cn) return cn + "硕士";
   }
-  if (/master of science|msc/.test(e)) return "理学硕士";
-  if (/master of arts\b|\bma\b/.test(e)) return "文学硕士";
-  if (/master of business|mba/.test(e)) return "工商管理硕士";
-  if (/master of philosophy|mphil/.test(e)) return "哲学硕士";
-  if (/doctor of philosophy|phd/.test(e)) return "博士";
-  if (/bachelor/.test(e)) return "学士";
-  return "";
+  const d = lookupDegree(en);
+  return d ? d.cn : "";
 }
 
 
