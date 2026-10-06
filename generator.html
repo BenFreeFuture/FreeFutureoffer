@@ -198,7 +198,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.9.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.10.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -323,7 +323,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.9.0</footer>
+  <footer>自由未来 FreeFuture · v1.10.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -2604,8 +2604,9 @@ const MAJOR_IDX = [
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.9.0";
+const VERSION = "v1.10.0";
 const CHANGELOG = [
+  { v: "v1.10.0", t: "2026-10-06", n: "🇨🇳 中文录取通知书也能认了：识别质量差时自动换中文模型（约 2MB，仅中文 offer 才下载）→「港理工 管理学博士项目（DMgt）」这类中文专业名/学位名直接填好；英文侧补回 Doctor of Management / Management。英文侧同时修掉两个老毛病：伯明翰「Programme Title: MSc Robotics FT」专业不再空白（现自动出 机器人学），学位不再被正文里 will be sent to you in due course 的 be 误判成「工程学士」（现正确为 理学硕士）" },
   { v: "v1.8.0", t: "2026-10-06", n: "🎓 学位字典上线（用户汇总表）：本科/硕士/博士 110+ 条目，覆盖英文全称与全部缩写变体（M.Sc./LL.M./Ph.D./MBBS/JD/SJD/PharmD…）——只写缩写也能认出学位；专业名自动剥离学位前缀（MSc Data Science → 数据科学）；日常英文词不再被误认成学位" },
   { v: "v1.7.0", t: "2026-10-06", n: "📦 真正的「一个链接就能用」：HTML 自带全部程序（母版/引擎/字体/识别库），只有体积大的识别模型联网按需下载——四源并行测速自动挑最快的（同站 / 国内镜像 / Pages 同源 / 备选），不用再附带任何文件夹" },
   { v: "v1.6.0", t: "2026-10-06", n: "🛠️ 修复「OCR 引擎加载不上」（jsDelivr 在国内不可达 → 字段全空）：识别库内嵌 + core/语言包自托管 + 国内镜像三源自动切换；识别失败不再默默跳过，会写进诊断日志" },
@@ -2729,6 +2730,17 @@ const OCR_SOURCES = [
     lang: "https://tessdata.projectnaptha.com/4.0.0",
     worker: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js" },
 ];
+/* 中文模型源（v1.10.0）：港澳中文录取通知书用——eng 模型跑中文只会出拉丁噪声。
+   langPath 必须同时能取到 chi_sim（能取到 eng 的用 chi_sim+eng 双语）。 */
+const MM_CORE = "https://cdn.npmmirror.com/packages/tesseract.js-core/5.1.0/files/tesseract-core-simd-lstm.wasm.js";
+const MM_WORKER = "https://cdn.npmmirror.com/packages/tesseract.js/5.1.1/files/dist/worker.min.js";
+const PAGES_OCR = "https://benfreefuture.github.io/FreeFutureoffer/ocr";
+const OCR_SOURCES_CJK = [
+  { tag: "本站中文模型", langs: "chi_sim+eng", core: "./ocr/tesseract-core-simd-lstm.wasm.js", lang: "./ocr", worker: "./ocr/worker.min.js" },
+  { tag: "Pages 同源", langs: "chi_sim+eng", core: PAGES_OCR + "/tesseract-core-simd-lstm.wasm.js", lang: PAGES_OCR, worker: PAGES_OCR + "/worker.min.js" },
+  { tag: "国内镜像中文", langs: "chi_sim", core: MM_CORE, lang: "https://cdn.npmmirror.com/packages/@tesseract.js-data/chi_sim/1.0.0/files/4.0.0", worker: MM_WORKER },
+  { tag: "官方数据源", langs: "chi_sim+eng", core: MM_CORE, lang: "https://tessdata.projectnaptha.com/4.0.0", worker: MM_WORKER },
+];
 /* blob: 形式的 worker 里相对路径无法解析，统一转绝对 URL */
 const absURL = u => { try { return new URL(u, location.href).href; } catch (e) { return u; } };
 
@@ -2779,9 +2791,53 @@ async function rankOCRSources() {
   return ok.concat(rest);
 }
 
+/* 识别质量打分：中文字符 ×3 + 置信度
+   （港理工中文通知书：eng 模型 conf 34 → chi_sim 86；伯明翰英文：eng 93 已够好不用换） */
+function ocrScore(r) { return cjkCount(r.text) * 3 + (r.conf || 0); }
+
+/* 一次识别（含多源自愈）；src.langs 为该源要加载的语言包，缺省 eng */
+async function ocrOnce(sources, status, sizeHint) {
+  const img = App.offerImg;
+  /* 🔒 锁定版本：core 5.1.0 / lang 4.0.0（浮动 tag 曾在 2026-10-06 拉到劣化 wasm，
+     细体行大面积断笔，仅加粗行存活）。勿改回浮动版本号。 */
+  let data = null, lastErr = null, used = null;
+  for (const src of sources) {
+    let worker = null;
+    try {
+      const langs = src.langs || "eng";
+      status.textContent = "下载识别模型（" + src.tag + "，" + sizeHint + "）…";
+      App.ocrTried.push(src.tag + "/" + langs);
+      worker = await Tesseract.createWorker(langs, 1, {
+        workerPath: tessWorkerURL() || absURL(src.worker),
+        corePath: absURL(src.core),
+        langPath: absURL(src.lang),
+        logger: m => {
+          if (m.status === "recognizing text")
+            status.textContent = "识别中 " + Math.round(m.progress * 100) + "%（" + src.tag + "）";
+          else if (m.status && /load|download|initializing/i.test(m.status))
+            status.textContent = "下载识别模型（" + src.tag + "）…" + (m.progress ? Math.round(m.progress * 100) + "%" : "");
+        },
+      });
+      const r = await worker.recognize(img);
+      data = r.data;
+      await worker.terminate();
+      used = { tag: src.tag, langs };
+      break;
+    } catch (e) {
+      lastErr = e;
+      try { if (worker) await worker.terminate(); } catch (e2) { /* ignore */ }
+    }
+  }
+  if (!data) throw (lastErr || new Error("all-sources-failed"));
+  return {
+    data, lines: groupTesseractLines(data),      // 组行：tesseract words 按 line 分组
+    conf: data.confidence || 0, text: data.text || "",
+    src: used.tag, lang: used.langs,
+  };
+}
+
 async function runOCR() {
   const status = $("#ocr-status");
-  const img = App.offerImg;
   try {
     status.textContent = "正在选择最快的识别引擎下载源…";
     const ok = await (window.__TESS_READY__ || Promise.resolve(typeof Tesseract !== "undefined"));
@@ -2789,44 +2845,27 @@ async function runOCR() {
 
     const sources = await rankOCRSources();
     App.ocrTried = [];
-
-    /* 🔒 锁定版本：core 5.1.0 / lang 4.0.0（浮动 tag 曾在 2026-10-06 拉到劣化 wasm，
-       细体行大面积断笔，仅加粗行存活）。勿改回浮动版本号。 */
-    let data = null, lastErr = null;
-    for (const src of sources) {
-      let worker = null;
+    let best = await ocrOnce(sources, status, "首次约 15MB");
+    /* 中文 offer 自动补跑中文模型：eng 跑中文只会出拉丁噪声（实测 conf 34），
+       噪声里还会蹦出 BSE 这类假缩写把学位带成「工程科学学士」 */
+    if ((best.conf || 0) < 70 || cjkCount(best.text) > 0) {
+      status.textContent = "疑似中文 offer，换中英双语模型再识别一次…";
       try {
-        status.textContent = "下载识别模型（" + src.tag + "，首次约 15MB）…";
-        App.ocrTried.push(src.tag);
-        worker = await Tesseract.createWorker("eng", 1, {
-          workerPath: tessWorkerURL() || absURL(src.worker),
-          corePath: absURL(src.core),
-          langPath: absURL(src.lang),
-          logger: m => {
-            if (m.status === "recognizing text")
-              status.textContent = "识别中 " + Math.round(m.progress * 100) + "%（" + src.tag + "）";
-            else if (m.status && /load|download|initializing/i.test(m.status))
-              status.textContent = "下载识别模型（" + src.tag + "）…" + (m.progress ? Math.round(m.progress * 100) + "%" : "");
-          },
-        });
-        const r = await worker.recognize(img);
-        data = r.data;
-        await worker.terminate();
-        App.ocrSource = src.tag;
-        break;
+        const cn = await ocrOnce(OCR_SOURCES_CJK, status, "中文模型约 2MB");
+        if (ocrScore(cn) > ocrScore(best)) best = cn;
+        else App.errLog.push("中文模型未提升：" + cn.src + " conf " + Math.round(cn.conf));
       } catch (e) {
-        lastErr = e;
-        try { if (worker) await worker.terminate(); } catch (e2) { /* ignore */ }
+        App.errLog.push("中文模型不可用: " + (e && e.message || e));
+        App.cnFallback = true;
       }
     }
-    if (!data) throw (lastErr || new Error("all-sources-failed"));
-
-    /* 组行：tesseract words 按 line 分组 */
-    const lines = groupTesseractLines(data);
-    App.ocrLines = lines;
+    App.ocrLines = best.lines;
     App.ocrMode = "ok";
-    status.textContent = "识别完成（" + App.ocrSource + "）";
-    afterOCR(lines);
+    App.ocrSource = best.src;
+    App.ocrLang = best.lang;
+    status.textContent = "识别完成（" + best.src + " · " +
+      (best.lang === "eng" ? "英文" : "中英双语") + "）";
+    afterOCR(best.lines);
   } catch (err) {
     /* 全部源失败：降级手填 */
     App.ocrMode = "unavailable";
@@ -2908,7 +2947,29 @@ function extractByVote(rows, kind) {
     const re2 = /University\s+of\s+[A-Z][A-Za-z&.']*(?:\s+[A-Z][A-Za-z&.']*){0,3}/g;
     while ((m = re2.exec(flat)) !== null) add(m[0], 1);
   } else {
-    /* 专业：Master of X Programme/Program in Y；标签行 X；Master of X ( */
+    /* 🔴 v1.10.0：把「逐行强信号」提到正则投票之前。
+       此前 Programme Title: MSc Robotics FT 这类标签行一个都抓不到 → 专业名空白 */
+    /* 层① 标签行：Programme Title: X / Programme of Study: X / 项目名称：X —— 取整行 */
+    for (const row of rows) {
+      const m = row.match(/(?:Programme|Program|Course|Degree)\s+(?:name|title|of\s+study)\s*[:：]\s*(.+)$/i)
+             || row.match(/(?:Programme|Program|Course|Degree)\s*[:：]\s*(.+)$/i)
+             || row.match(/(?:项目名称|項目名稱|課程名稱|课程名称|专业名称|專業名稱)\s*[:：;]\s*(.+)$/);
+      if (m) { const out = labelMajorOut(m[1]); if (out) return out; }
+    }
+    /* 层② 学位缩写带专业名：MSc Robotics FT → Robotics */
+    for (const row of rows) {
+      const m = row.match(/\b(?:MSc|MA|MBA|MPhil|MRes|MFA|MPA|MPP|MPH|MDes|MEd|MFin|MAcc|MEng|MComp|MArch|LLM|PhD|DPhil|EdD|DBA|DMgt|DEng|BSc|BA|BEng|BBA|LLB|BArch|MBBS|MD)\b[.\s]+([A-Z][A-Za-z&'’\-]+(?:\s+[A-Za-z&'’\-]+){0,5})\s*(?=\s+(?:FT|PT|Full[-\s]?time|Part[-\s]?time|Taught|Research|Years|Year|Mode|Academic)\b|[.,;(]|$)/);
+      if (m) { const out = labelMajorOut(m[1]); if (out) return out; }
+    }
+    /* 层③ 标签行/学位缩写行里扫专业词典（Robotics 这类只出现在标题行的词典词） */
+    {
+      const zone = rows.filter(r =>
+        /(?:programme|program|course|degree)\s*(?:name|title|of\s+study)?\s*[:：]|项目名称|項目名稱|課程名稱|课程名称|专业名称|專業名稱|\b(?:MSc|MA|MBA|MPhil|PhD|LLM|BSc|BA)\b/i.test(r)
+      ).join(" ");
+      const out = majorDictScan(zone);
+      if (out) return out;
+    }
+    /* 层④ 原有 flat 正则（跨行 / 校名所有格等）→ 投票兜底 */
     let m;
     const re1 = new RegExp(
       "(?:Master|Bachelor|Doctor)\\s+of\\s+[A-Za-z]+\\s+(?:Programme|Program)\\s+in\\s+" +
@@ -3002,26 +3063,38 @@ function prefillFields(full) {
      [出现次数+完整性+词典命中] 评分，取最合理最完整的，绝不信第一个 */
   const rows = App.ocrLines.map(l => l.words.map(w => w.text).join(" ").trim());
   const flat = rows.filter(Boolean).join(" ").replace(/\s+/g, " ");
+  /* 中文/学位扫描要按「行」看：行尾就是字段边界，拼成一整行会让
+     「项目名称」把后面「项目编号 / 修读模式」全部吞进专业名 */
+  const flatNl = rows.filter(Boolean).join("\n");
   /* 校名：投票提取 → 指纹库兜底补全（域名 / 关键词 / 简写，v1.5.0） */
   const univRaw = extractByVote(rows, "univ");
   const ru = resolveUnivName(univRaw, flat);
+  /* 中文校名兜底：中文通知书里英文侧常抓不到/抓错校名（如把合作院校认成本校），
+     正文里最靠前的中文校名更可信（通知书抬头就是本校）；域名/完整校名铁证除外 */
+  const cu = cnUnivScan(flatNl);
+  if (cu && (!ru.name || (ru.how !== "domain" && ru.how !== "full"))) {
+    ru.name = cu.en; ru.cnName = cu.cn; ru.how = "cn";
+    ru.note = "🤖 从中文正文里认出校名「" + cu.cn + "」，请核对（可直接改）";
+  }
   f.en.univ = ru.name || univRaw;
   App.univGuess = ru;
   const prog = extractByVote(rows, "major");
-  /* 学位：标签行 > 全文全称 > 全文缩写（DEGREE_DICT 本科/硕士/博士全覆盖，v1.8.0） */
-  let deg = scanDegree(flat);
+  const cnMaj = scanMajorCn(flatNl);          // v1.10.0：中文专业名（港澳中文通知书）
+  /* 学位：中文通知书 → 标签行 → 全文全称 → 全文缩写（DEGREE_DICT 本科/硕士/博士全覆盖） */
+  let deg = scanDegree(flatNl);
   if (!deg && prog && prog.raw) {                              // 兜底：专业名括号里的缩写
     const dm = prog.raw.match(/\(([A-Za-z.]{2,8})\)/);
     if (dm) deg = lookupDegree(dm[1]);
   }
   f.en.degree = deg ? deg.en : "";
   App.degGuess = deg;
-  f.en.major = prog ? prog.clean : "";
+  /* 中文通知书别把中文原文塞进英文栏（查不到英文名就留空给用户填） */
+  f.en.major = cnMaj ? cnMaj.en : (prog ? prog.clean : "");
   /* 中文：内置常见对照 + 学位映射；查不到留空给用户填 */
   const m = mapUnivCn(f.en.univ);
-  f.cn.univ = m.cn;
+  f.cn.univ = ru.cnName || m.cn;
   App.fields.flag = m.flag;            // 国旗 emoji（2026-10-05 恢复）
-  f.cn.major = mapMajorCn(f.en.major);
+  f.cn.major = cnMaj ? cnMaj.cn : mapMajorCn(f.en.major);
   /* v1.9.0：词典「猜」中的专业名照样自动填，但必须打标让人工核对 */
   App.majorGuess = null;
   if (f.en.major) {
@@ -3034,7 +3107,18 @@ function prefillFields(full) {
       };
     }
   }
-  f.cn.degree = deg ? deg.cn : mapDegreeCn(f.en.degree);
+  /* 学位名自带专业且专业栏为空（如英文侧只认出「管理学博士」）→ 拆成 专业+学位，
+     否则冠名会拼成「管理学管理学博士」 */
+  let degCn = deg ? deg.cn : mapDegreeCn(f.en.degree);
+  if (degCn && !f.cn.major) {
+    const sp = degCn.match(/^([^博硕学]{1,10}?[学])(?:博士|硕士|学士)$/);
+    if (sp && sp[1].length >= 2) {
+      f.cn.major = sp[1];
+      degCn = degCn.slice(sp[1].length);
+      if (!f.en.major) f.en.major = cnMajorToEn(sp[1]);
+    }
+  }
+  f.cn.degree = degCn;
 }
 
 /* ============================================================
@@ -3686,7 +3770,10 @@ const DEGREE_DICT = [
   ["Bachelor of Interdisciplinary Studies", /\bbis\b/, "综合研究学士", "U", 1],
   ["Bachelor of Professional Studies", /\bbps\b/, "专业研究学士", "U", 1],
   ["Bachelor of Science in Engineering", /\b(?:bsceng|bse|bseng)\b/, "工程科学学士", "U", 0],
-  ["Bachelor of Engineering", /\b(?:beng|be)\b/, "工程学士", "U", 1],   // "be" 是英文常用词
+  /* 🔴 beng 与 be 必须拆开：BEng 本身够独特不用语境；be 是英文常用词（"will be sent to you
+     in due course"），只认「窗口里有 bachelor/undergraduate」的位置（2026-10-06 伯明翰实测） */
+  ["Bachelor of Engineering", /\bbeng\b/, "工程学士", "U", 0],
+  ["Bachelor of Engineering", /\bbe\b/, "工程学士", "U", 1],
   ["Bachelor of Technology", /\bbtech\b/, "技术学士", "U", 0],
   ["Bachelor of Computer Science", /\b(?:bcs|bcompsc|bcompsci)\b/, "计算机科学学士", "U", 0],
   ["Bachelor of Information Technology", /\bbit\b/, "信息技术学士", "U", 1],
@@ -3760,7 +3847,11 @@ const DEGREE_DICT = [
   /* ---------- 博士 D ---------- */
   ["Doctor of Philosophy", /\b(?:phd|dphil|dph)\b/, "博士", "D", 0],
   ["Doctor of Business Administration", /\bdba\b/, "工商管理博士", "D", 0],
-  ["Doctor of Engineering", /\b(?:deng|engd|des)\b/, "工程博士", "D", 1],
+  /* DMgt：港理工/港大等「管理学博士」专业博士（2026-10-06 港理工中文通知书实测）
+     顺带收 OCR 常见的 g/t 混认（DMgb） */
+  ["Doctor of Management", /\b(?:dmgt|dmgb|dmg)\b/, "管理学博士", "D", 0],
+  ["Doctor of Engineering", /\b(?:deng|engd)\b/, "工程博士", "D", 0],
+  ["Doctor of Engineering", /\bdes\b/, "工程博士", "D", 1],
   ["Doctor of Education", /\b(?:edd|ded)\b/, "教育学博士", "D", 0],
   ["Doctor of Nursing Science", /\bdnsc\b/, "护理科学博士", "D", 0],
   ["Doctor of Public Health", /\b(?:drph|dph)\b/, "公共卫生博士", "D", 0],
@@ -3819,16 +3910,17 @@ function normDeg(s) {
 /* 学位语境词：risky 缩写（be/do/me/od/nd/da/dd/des/mit…）必须靠它佐证，
    否则 "I am delighted"、"you will be able" 这类日常英文会被误认成学位 */
 const DEG_CTX_NEAR = /bachelor|master|doctor|degree|programme|program|awarded|admission|admitted|course|study|diploma|faculty|school of|graduate/i;
-/* 层级上下文：供 risky 缩写佐证；出现层级词时按层级判定，都没有时只要有学位语境就放行 */
-function degCtx(n) {
-  const near = DEG_CTX_NEAR.test(n);
-  const U = /\bbachelor|undergraduate/.test(n);
-  const M = /\bmaster|postgraduate/.test(n);
-  const D = /\bdoctor|doctoral/.test(n);
-  const any = U || M || D;
-  return { U: near && (any ? U : true), M: near && (any ? M : true), D: near && (any ? D : true) };
-}
-/* 学位查表：全称优先 → 缩写（risky 需上下文佐证）→ 返回 {cn, en, level, via} */
+/* 🔴 risky 缩写必须靠「缩写附近的层级词」佐证，不能只看整篇
+   —— 整篇判定的代价（2026-10-06 伯明翰实测）：offer 里 "will be sent to you in due
+   course" 的 be 被整篇出现的 programme 一词放行，判成了「工程学士」（实为 MSc 理学硕士）。 */
+const DEG_LEVEL_WORD = {
+  U: /\b(?:bachelor|undergraduate)s?\b/i,
+  M: /\b(?:master|postgraduate)s?\b/i,
+  D: /\b(?:doctor|doctoral|doctorate)s?\b/i,
+};
+/* 旧「整篇语境」判定已废弃（risky 改按局部窗口判），留空壳兼容可能残留的调用 */
+function degCtx() { return { U: true, M: true, D: true }; }
+/* 学位查表：全称优先 → 缩写（逐处命中 + 局部窗口判定）→ {cn, en, level, via} */
 function lookupDegree(text) {
   const n = normDeg(text);
   if (!n) return null;
@@ -3838,54 +3930,148 @@ function lookupDegree(text) {
       return { cn: d[2], en: d[0], level: d[3], via: "full" };
     }
   }
-  const ctx = degCtx(n);
+  /* 短文本（手动输入框 / 项目标题行，如「管理学博士项目（DMgt）」归一化后只剩 dmgt）
+     就是要判定的学位本身，不再要求附近有语境词 */
+  const field = n.length <= 40;
   for (const d of DEGREE_DICT) {
-    if (!d[1].test(n)) continue;
-    if (d[4] && !ctx[d[3]]) continue;            // risky 缩写缺层级佐证 → 不认
-    if (d[5] && degBlocked(d, n)) continue;      // 命中排除条件（March 日期 / MIT 校名）
-    return { cn: d[2], en: d[0], level: d[3], via: "abbr" };
+    const re = new RegExp(d[1].source, "g");
+    let m;
+    while ((m = re.exec(n)) !== null) {
+      const win = n.substr(Math.max(0, m.index - 70), 160);
+      if (d[4]) {
+        if (!DEG_LEVEL_WORD[d[3]].test(win)) continue;      // risky：窗口内要有同层词
+      } else if (!field) {
+        if (!DEG_CTX_NEAR.test(win)) continue;              // 长文档：窗口内要有学位/项目语境
+      }
+      if (d[5] && d[5].test(win)) continue;                 // notIf（March 日期 / MIT 校名）
+      return { cn: d[2], en: d[0], level: d[3], via: "abbr" };
+    }
   }
   return null;
 }
-/* notIf 按「缩写出现处的局部窗口」判，别让全文别处一个日期连累真正的学位 */
-function degBlocked(d, n) {
-  const re = new RegExp(d[1].source, "g");
-  let m;
-  while ((m = re.exec(n)) !== null) {
-    if (d[5].test(n.substr(Math.max(0, m.index - 60), 140))) return true;
-  }
-  return false;
-}
-/* 从整篇 OCR 文本里扫学位：标签行 → 全文全称 → 全文缩写
-   全文缩写要求附近 60 字符内有学位/项目语境，避免把随手一个 "MA" 当学位 */
+/* notIf 已并入 lookupDegree 的局部窗口判定，留空壳兼容 */
+function degBlocked() { return false; }
+/* 从整篇 OCR 文本里扫学位：
+   中文通知书 → 英文标签行 → 全文全称 → 全文缩写（局部窗口语境）→ derive */
 function scanDegree(flat) {
+  if (cjkCount(flat) >= 2) {                        // 中文通知书：中文学位优先
+    const cn = scanDegreeCn(flat);
+    if (cn) {
+      const en = lookupDegree(degreeZone(flat));    // 标题行里的 DMgt / PhD 等英文缩写
+      if (en && en.level === cn.level) { cn.en = en.en; cn.via = "cn+en"; }
+      return cn;
+    }
+  }
   const lab = (flat || "").match(/degree(?:\s*\/\s*diploma)?(?:\s+awarded)?\s*[:：]\s*([^\n\r]{2,60})/i);
   if (lab) { const d = lookupDegree(lab[1]); if (d) return d; }
   const whole = lookupDegree(flat || "");
   if (whole && whole.via === "full") return whole;
-  const n = normDeg(flat || "");
-  if (n) {
-    for (const d of DEGREE_DICT) {
-      const re = new RegExp(d[1].source, "g");
-      let m;
-      while ((m = re.exec(n)) !== null) {
-        /* 窗口必须取归一化串：m.index 是 n 上的位置，取 flat 会错位（标点被剥掉了） */
-        const win = n.substr(Math.max(0, m.index - 60), 140);
-        if (!DEG_CTX_NEAR.test(win)) continue;
-        /* notIf 也按局部窗口判：全文别处有个日期，不该连累真正的 MArch */
-        if (d[5] && d[5].test(win)) continue;
-        if (d[4] && !degCtx(n)[d[3]]) continue;
-        return { cn: d[2], en: d[0], level: d[3], via: "abbr" };
-      }
-    }
-  }
   /* 兜底：无缩写的专业型学位 "Master in Public Policy"（Harvard Kennedy / HKS 实测） */
-  const mk = n.match(/\bmaster\s+(?:in|of)\s+([a-z ]{3,40}?)(?:\s+program|\s+programme|$)/);
+  const mk = normDeg(flat || "").match(/\bmaster\s+(?:in|of)\s+([a-z ]{3,40}?)(?:\s+program|\s+programme|$)/);
   if (mk) {
     const sub = mk[1].trim(), cn = mapMajorCn(sub);
     if (cn) return { cn: cn + "硕士", en: "Master in " + sub, level: "M", via: "derive" };
   }
   return whole;
+}
+/* 英文缩写取样区：只取项目标题/学位标签行，别让中文正文里的拉丁噪声带偏学位
+   （也收「X博士项目」这类中文标题行，DMgt 就挂在那一行括号里） */
+function degreeZone(flat) {
+  const rows = (flat || "").split("\n");
+  const hit = rows.filter(r =>
+    /(?:programme|program|course|degree)\s*(?:name|title|of\s+study)?\s*[:：]|项目名称|項目名稱|課程名稱|课程名称|专业名称|学位名称|[\u4e00-\u9fff]{2,12}(?:博士|硕士|学士)|\b(?:dmgt|dmgb|phd|msc|ma|llm|mba|edd|dba)\b/i.test(r));
+  return hit.join(" ") || (flat || "").slice(0, 260);
+}
+
+/* ============================================================
+ * 中文学位 / 中文专业 / 中文校名（v1.10.0，港澳中文录取通知书）
+ * ------------------------------------------------------------
+ * 背景：中文通知书用 eng 模型跑出来只有拉丁噪声（实测 conf≈34），
+ * 不仅中文全丢，噪声里还会蹦出 BSE / OMe 这类假缩写把学位带成
+ * 「工程科学学士」。所以：① 整篇识别质量差时自动换 chi_sim；
+ * ② 有中文时优先走中文识别；③ 英文缩写只认标签行那一小块。
+ * ============================================================ */
+function cjkCount(s) { return ((s || "").match(/[\u4e00-\u9fff]/g) || []).length; }
+/* 中文学位词表：排列即优先级（副学士必须早于学士，否则「副学士」被「学士」吃掉） */
+const CN_DEG_LEVEL = [
+  [/副学士/, "副学士", "U"],
+  [/研究生文凭|深造文凭|研究生证书|深造证书/, "研究生文凭", "M"],
+  [/博士学位|博士研究生|博士項目|博士项目|博士/, "博士", "D"],
+  [/硕士学位|碩士學位|硕士研究生|硕士/, "硕士", "M"],
+  [/学士学位|學士學位|本科|学士/, "学士", "U"],
+];
+function cnDegreeOf(s) {
+  const t = (s || "").replace(/\s+/g, "");
+  for (const [re, cn, lv] of CN_DEG_LEVEL) if (re.test(t)) return { cn, en: "", level: lv, via: "cn" };
+  return null;
+}
+/* 中文学位：① 标签行 ② 标题行「X博士项目」 ③ 全文计次 */
+function scanDegreeCn(flat) {
+  const f = flat || "";
+  if (cjkCount(f) < 2) return null;
+  const lab = f.match(/(?:学位名称|學位名稱|项目名称|項目名稱|課程名稱|课程名称|专业名称|專業名稱)\s*[:：;]\s*([^\n]{2,40}?)\s*(?=$|\s{2,}|[\u4e00-\u9fff]{2,8}\s*[:：])/);
+  if (lab) { const d = cnDegreeOf(lab[1]); if (d) return d; }
+  const t = f.match(/[\u4e00-\u9fff]{2,16}(?:博士|硕士|学士)(?:学位|學位)?(?:项目|項目|課程|课程|Programme|Program)/);
+  if (t) { const d = cnDegreeOf(t[0]); if (d) return d; }
+  let best = null, bestN = 0;
+  for (const [re, cn, lv] of CN_DEG_LEVEL) {
+    if (lv === "U" && cn === "副学士") continue;           // 副学士不参与纯计次
+    const cnt = (f.match(new RegExp(re.source, "g")) || []).length;
+    if (cnt > bestN) { bestN = cnt; best = { cn, en: "", level: lv, via: "cn" }; }
+  }
+  return best;
+}
+/* 中文专业：标签行 → 标题行「X博士项目」→ 反查英文名 */
+const CN_MAJOR_STRIP = /(?:博士|硕士|学士|研究生)(?:学位|學位)?|学位|學位|项目|項目|課程|课程|专业|專業|Programme|Program|Course/g;
+function stripCnMajor(s) {
+  let t = (s || "").replace(/[（(][^)）]*[)）]/g, " ").replace(/\s+/g, "");
+  t = t.replace(CN_MAJOR_STRIP, "");
+  return t.replace(/[、·:：;；,，.。\-—]+/g, "").trim();
+}
+function scanMajorCn(flat) {
+  const f = flat || "";
+  if (cjkCount(f) < 2) return null;
+  let raw = "";
+  let m = f.match(/(?:项目名称|項目名稱|課程名稱|课程名称|专业名称|專業名稱)\s*[:：;]\s*([^\n]{2,40}?)\s*(?=$|\s{2,}|[\u4e00-\u9fff]{2,8}\s*[:：])/);
+  if (m) raw = m[1];
+  if (!raw) {
+    m = f.match(/([\u4e00-\u9fff]{2,16})(?:博士|硕士|学士)(?:学位|學位)?(?:项目|項目|課程|课程)/);
+    if (m) raw = m[0];
+  }
+  if (!raw) return null;
+  const cn = stripCnMajor(raw);
+  if (cn.length < 2 || cn.length > 20) return null;
+  return { cn, en: cnMajorToEn(cn), raw: (raw || "").trim() };
+}
+/* 中文专业名 → 英文规范名：反查 1187 条专业字典（管理学 → Management） */
+let CN2EN_MAJOR = null;
+function cnMajorToEn(cn) {
+  const idx = majorIndex();
+  if (!idx) return "";
+  if (!CN2EN_MAJOR) {
+    CN2EN_MAJOR = {};
+    for (const [term, c, canon] of idx) {
+      const cur = CN2EN_MAJOR[c];
+      /* 同一中文名对应多个英文词条时取最短的（Management 优于 strategic management） */
+      if (!cur || term.length < cur.term.length) CN2EN_MAJOR[c] = { term, canon };
+    }
+  }
+  const hit = CN2EN_MAJOR[cn] || CN2EN_MAJOR[cn.replace(/学$/, "")];
+  return hit ? (hit.canon || hit.term) : "";
+}
+/* 中文校名兜底：取正文里最靠前、最长的中文校名（通知书抬头是本校，合作院校在后） */
+function cnUnivScan(flat) {
+  const f = flat || "";
+  if (cjkCount(f) < 2) return null;
+  let best = null;
+  for (const row of UNIV_FP) {
+    const cn = row[1];
+    if (!cn || cn.length < 4) continue;
+    const i = f.indexOf(cn);
+    if (i < 0) continue;
+    if (!best || i < best.i || (i === best.i && cn.length > best.cn.length)) best = { i, cn, en: row[0] };
+  }
+  return best;
 }
 
 function cleanMajor(s) {
@@ -3898,8 +4084,38 @@ function cleanMajor(s) {
   t = t.replace(/^(?:Science|Arts|Engineering|Laws|Philosophy|Education|Business Administration|Studies)\s+in\s+/i, "");
   /* 剥掉混进专业名的学位缩写："MSc Data Science" → "Data Science" */
   t = t.replace(DEG_ABBR_STRIP, " ").replace(/\s+/g, " ").trim();
+  /* 剥掉尾部的修读模式（"MSc Robotics FT" → "Robotics"，伯明翰 offer 实测） */
+  for (let g = 0; g < 4; g++) {
+    const prev = t;
+    t = t.replace(/\s+(?:FT|PT|Full[-\s]?time|Part[-\s]?time|Taught|Research|Mode)\s*$/i, "")
+         .replace(/\s+/g, " ").trim();
+    if (t === prev) break;
+  }
   t = t.replace(/[\s,&;:]+$/, "").replace(/\s+/g, " ").trim();
   return t;
+}
+/* 标签行取到的专业原文 → 结构化（cleanMajor 后为空则视为无专业） */
+function labelMajorOut(raw) {
+  const r = (raw || "").replace(/\s+/g, " ").trim();
+  const clean = cleanMajor(r);
+  if (!clean) return null;
+  const dm = r.match(/\(([A-Za-z.]{2,8})\)/);
+  return { clean, raw: r, degHint: dm ? dm[1] : null, sc: 999 };
+}
+/* 在标题/标签行里扫 1187 条专业词典，取最长命中（Robotics 这类词典词靠它兜底） */
+function majorDictScan(text) {
+  const idx = majorIndex();
+  if (!idx) return null;
+  const t = (text || "").toLowerCase();
+  let best = null;
+  for (const [term, cn, canon] of idx) {
+    if (term.length < 4) continue;                       // 太短易误判（art / law / gis）
+    const at = t.indexOf(term);
+    if (at < 0) continue;
+    if (!best || term.length > best.term.length) best = { term, cn, canon };
+  }
+  if (!best) return null;
+  return { clean: best.canon || best.term, raw: best.term, degHint: null, sc: 999, via: "dict" };
 }
 /* ============================================================
  * 专业名识别 v1.9.0：1187 条字典（2026-10-06 用户提供 1000+ 组合）
