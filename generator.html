@@ -4579,8 +4579,13 @@ async function archiveToWedrive() {
     setArchiveNote(`已存入 微盘 / 录取捷报 / WB自动存档：${j.filename} · 同一张图保留 ${j.copies}/${max} 份${tail}`, "ok");
   } catch (e) {
     btn.textContent = label;
-    setArchiveNote("归档失败：" + (e.message || e) + " — 可先下载到本机再手动传微盘", "err");
-    App.errLog.push("归档失败: " + (e.message || e));
+    const m = String(e && e.message || e);
+    /* 连不上服务和「服务说不行」要分开提示，否则用户看不懂 Failed to fetch 是什么 */
+    const net = /fetch|network|Load failed|Failed to/i.test(m) && !/HTTP \d/.test(m);
+    setArchiveNote(net
+      ? "连不上归档服务（网络不通或服务未启动）— 可先下载到本机再手动传微盘"
+      : "归档失败：" + m + " — 可先下载到本机再手动传微盘", "err");
+    App.errLog.push("归档失败: " + m);
   } finally {
     btn.disabled = false;
   }
