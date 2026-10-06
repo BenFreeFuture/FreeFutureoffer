@@ -198,7 +198,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.6.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.7.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -322,7 +322,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.6.0</footer>
+  <footer>自由未来 FreeFuture · v1.7.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -1031,12 +1031,13 @@ window.FreePoster = {
 };
 </script>
 <script>/* ============================================================
- * FreePoster App v1.6.0 —— 三页交互逻辑 + 更新日志 + Bug 通报
+ * FreePoster App v1.7.0 —— 三页交互逻辑 + 更新日志 + Bug 通报
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.6.0";
+const VERSION = "v1.7.0";
 const CHANGELOG = [
+  { v: "v1.7.0", t: "2026-10-06", n: "📦 真正的「一个链接就能用」：HTML 自带全部程序（母版/引擎/字体/识别库），只有体积大的识别模型联网按需下载——四源并行测速自动挑最快的（同站 / 国内镜像 / Pages 同源 / 备选），不用再附带任何文件夹" },
   { v: "v1.6.0", t: "2026-10-06", n: "🛠️ 修复「OCR 引擎加载不上」（jsDelivr 在国内不可达 → 字段全空）：识别库内嵌 + core/语言包自托管 + 国内镜像三源自动切换；识别失败不再默默跳过，会写进诊断日志" },
   { v: "v1.5.0", t: "2026-10-06", n: "🎯 新增大学指纹库（150+ 校：缩写 / edu 邮箱域名 / 官网核心词）——只抓到关键词或简写（Chicago / UCLA / UIC / UBC）也会自动补全校名并提示核对；页面带官网域名时按域名铁证识别；修复「Master in Public Policy ↵ Program」型跨行专业漏抓" },
   { v: "v1.4.1", t: "2026-10-06", n: "🎓 大学词典扩至 339 所（QS/USNews/软科核心+中国高校全中英对照），易混淆校名强提醒，识别准确度大升级" },
@@ -1132,17 +1133,27 @@ async function handleFile(f) {
 }
 
 /* ---------- OCR ----------
- * v1.6.0 多源自愈：core / 语言包按「同站自托管 → 国内镜像 → jsDelivr」逐源重试。
+ * v1.7.0 单文件分发：HTML 本身自带母版/引擎/字体/OCR 库（约 4MB），
+ * 只有体积大的识别模型（core 3.9MB + 英文语言包 10.9MB）联网时按需拉取，
+ * 这样「一个链接 / 一个 HTML」就能用全部功能，不用再附带 ocr 文件夹。
+ *
+ * 多源自愈：并行探测各源小文件耗时 → 选最快可达的那个；失败再串行回退。
  * 背景：原实现只挂 jsdelivr 一个源，国内网络整域不可达时表现为
  * 「字段全空 + 提示离线」，被误认为识别能力问题。
  */
 const OCR_SOURCES = [
+  /* 同目录自托管：本地双击 dist/ocr/ 或部署时随站一起放的 ocr/ 都走这条 */
   { tag: "本站资源", core: "./ocr/tesseract-core-simd-lstm.wasm.js", lang: "./ocr", worker: "./ocr/worker.min.js" },
   /* 国内镜像（cdn.npmmirror.com，实测 200；registry.npmmirror.com 的 @scoped/lang 路径会 403，勿改） */
   { tag: "国内镜像",
     core: "https://cdn.npmmirror.com/packages/tesseract.js-core/5.1.0/files/tesseract-core-simd-lstm.wasm.js",
     lang: "https://cdn.npmmirror.com/packages/@tesseract.js-data/eng/1.0.0/files/4.0.0",
     worker: "https://cdn.npmmirror.com/packages/tesseract.js/5.1.1/files/dist/worker.min.js" },
+  /* 与主页面同源的 GitHub Pages 资源（部署时一并推送 ocr/ 目录） */
+  { tag: "Pages 同源",
+    core: "https://benfreefuture.github.io/FreeFutureoffer/ocr/tesseract-core-simd-lstm.wasm.js",
+    lang: "https://benfreefuture.github.io/FreeFutureoffer/ocr",
+    worker: "https://benfreefuture.github.io/FreeFutureoffer/ocr/worker.min.js" },
   { tag: "备选源",
     core: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0",
     lang: "https://tessdata.projectnaptha.com/4.0.0",
@@ -1151,21 +1162,56 @@ const OCR_SOURCES = [
 /* blob: 形式的 worker 里相对路径无法解析，统一转绝对 URL */
 const absURL = u => { try { return new URL(u, location.href).href; } catch (e) { return u; } };
 
+/* 并行探测：各源拉一次小体积 worker 脚本文档计时，返回「按速度排序 + 探测失败者垫底」的源列表。
+   探测失败（含 CORS 拒绝）不代表一定不可用，所以仍保留在队尾供串行兜底。 */
+async function rankOCRSources() {
+  const probe = async src => {
+    const t0 = (performance && performance.now) ? performance.now() : Date.now();
+    try {
+      const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => { try { ctl.abort(); } catch (e) { /* noop */ } }, 8000) : null;
+      const r = await fetch(absURL(src.worker), ctl ? { signal: ctl.signal, cache: "force-cache" } : {});
+      if (timer) clearTimeout(timer);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      await r.arrayBuffer();
+      const t1 = (performance && performance.now) ? performance.now() : Date.now();
+      return { src, ms: t1 - t0 };
+    } catch (e) {
+      return null;
+    }
+  };
+  let res = [];
+  try {
+    res = (await Promise.all(OCR_SOURCES.map(probe))).filter(Boolean);
+  } catch (e) {
+    res = [];
+  }
+  res.sort((a, b) => a.ms - b.ms);
+  const ok = res.map(r => r.src);
+  const rest = OCR_SOURCES.filter(s => ok.indexOf(s) === -1);
+  App.ocrProbe = res.map(r => r.src.tag + " " + Math.round(r.ms) + "ms");
+  return ok.concat(rest);
+}
+
 async function runOCR() {
   const status = $("#ocr-status");
   const img = App.offerImg;
   try {
-    status.textContent = "加载识别引擎（首次约 3 秒）…";
+    status.textContent = "正在选择最快的识别引擎下载源…";
     const ok = await (window.__TESS_READY__ || Promise.resolve(typeof Tesseract !== "undefined"));
     if (!ok || typeof Tesseract === "undefined") throw new Error("no-lib");
+
+    const sources = await rankOCRSources();
+    App.ocrTried = [];
 
     /* 🔒 锁定版本：core 5.1.0 / lang 4.0.0（浮动 tag 曾在 2026-10-06 拉到劣化 wasm，
        细体行大面积断笔，仅加粗行存活）。勿改回浮动版本号。 */
     let data = null, lastErr = null;
-    for (const src of OCR_SOURCES) {
+    for (const src of sources) {
       let worker = null;
       try {
-        status.textContent = "加载识别引擎（" + src.tag + "）…";
+        status.textContent = "下载识别模型（" + src.tag + "，首次约 15MB）…";
+        App.ocrTried.push(src.tag);
         worker = await Tesseract.createWorker("eng", 1, {
           workerPath: absURL(src.worker),
           corePath: absURL(src.core),
@@ -1173,6 +1219,8 @@ async function runOCR() {
           logger: m => {
             if (m.status === "recognizing text")
               status.textContent = "识别中 " + Math.round(m.progress * 100) + "%（" + src.tag + "）";
+            else if (m.status && /load|download|initializing/i.test(m.status))
+              status.textContent = "下载识别模型（" + src.tag + "）…" + (m.progress ? Math.round(m.progress * 100) + "%" : "");
           },
         });
         const r = await worker.recognize(img);
@@ -1191,13 +1239,13 @@ async function runOCR() {
     const lines = groupTesseractLines(data);
     App.ocrLines = lines;
     App.ocrMode = "ok";
-    status.textContent = "识别完成";
+    status.textContent = "识别完成（" + App.ocrSource + "）";
     afterOCR(lines);
   } catch (err) {
     /* 全部源失败：降级手填 */
     App.ocrMode = "unavailable";
     App.errLog.push("OCR失败: " + (err && err.message || err));
-    status.textContent = "OCR 引擎不可用（离线模式），请手动填写";
+    status.textContent = "识别引擎下载失败（网络受限），已切换手动填写——填字即可，出图效果一样";
     afterOCR([]);
   }
 }
