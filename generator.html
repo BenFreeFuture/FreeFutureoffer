@@ -2154,7 +2154,10 @@ const DEGREE_DICT = [
   ["Master of Geographic Information Systems", /\bmgis\b/, "地理信息系统硕士", "M", 0],
   ["Master of Theological Studies", /\bmts\b/, "神学研究硕士", "M", 1],
   ["Master of Divinity", /\bmdiv\b/, "神学硕士", "M", 0],
-  ["Master of Architecture", /\bmarch\b/, "建筑学硕士", "M", 0],
+  /* ⚠️ MArch 撞日期：offer 里 "March 15, 2026" 会被认成建筑学硕士（Harvard 实测踩过），
+        所以缩写形态要求排除日期上下文；写全称 Master of Architecture 不受此限 */
+  ["Master of Architecture", /\bmarch\b/, "建筑学硕士", "M", 0,
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,4}\b|\b\d{1,4}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/],
   ["Master of Social Work", /\bmsw\b/, "社会工作硕士", "M", 0],
   ["Master of Nursing", /\b(?:msn|mnurs)\b/, "护理硕士", "M", 0],
   ["Master of Fine Arts", /\bmfa\b/, "美术硕士", "M", 0],
@@ -2230,9 +2233,11 @@ const DEG_ABBR_STRIP = new RegExp("\\b(?:" + [
   "jsd","jcd","dcl","lld","dmin","dtheol","thd","ddes","dfa","md",
 ].join("|") + ")\\b", "gi");
 
-/* 归一化：去点、只剩字母与空格（"M.Sc." → "msc"，"Ph.D." → "phd"） */
+/* 归一化：去点、保留字母数字（"M.Sc." → "msc"，"Ph.D." → "phd"）
+   🔴 数字必须保留：否则 "March 15, 2026" 变成 "march"，日期上下文消失，
+      MArch（建筑学硕士）就会被日期误触发（Harvard offer 实测踩过） */
 function normDeg(s) {
-  return (s || "").toLowerCase().replace(/\./g, "").replace(/[^a-z]/g, " ").replace(/\s+/g, " ").trim();
+  return (s || "").toLowerCase().replace(/\./g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
 }
 /* 学位语境词：risky 缩写（be/do/me/od/nd/da/dd/des/mit…）必须靠它佐证，
    否则 "I am delighted"、"you will be able" 这类日常英文会被误认成学位 */
@@ -2260,10 +2265,19 @@ function lookupDegree(text) {
   for (const d of DEGREE_DICT) {
     if (!d[1].test(n)) continue;
     if (d[4] && !ctx[d[3]]) continue;            // risky 缩写缺层级佐证 → 不认
-    if (d[5] && d[5].test(n)) continue;          // 命中排除条件（MIT 当校名时）
+    if (d[5] && degBlocked(d, n)) continue;      // 命中排除条件（March 日期 / MIT 校名）
     return { cn: d[2], en: d[0], level: d[3], via: "abbr" };
   }
   return null;
+}
+/* notIf 按「缩写出现处的局部窗口」判，别让全文别处一个日期连累真正的学位 */
+function degBlocked(d, n) {
+  const re = new RegExp(d[1].source, "g");
+  let m;
+  while ((m = re.exec(n)) !== null) {
+    if (d[5].test(n.substr(Math.max(0, m.index - 60), 140))) return true;
+  }
+  return false;
 }
 /* 从整篇 OCR 文本里扫学位：标签行 → 全文全称 → 全文缩写
    全文缩写要求附近 60 字符内有学位/项目语境，避免把随手一个 "MA" 当学位 */
@@ -2281,7 +2295,8 @@ function scanDegree(flat) {
         /* 窗口必须取归一化串：m.index 是 n 上的位置，取 flat 会错位（标点被剥掉了） */
         const win = n.substr(Math.max(0, m.index - 60), 140);
         if (!DEG_CTX_NEAR.test(win)) continue;
-        if (d[5] && d[5].test(n)) continue;
+        /* notIf 也按局部窗口判：全文别处有个日期，不该连累真正的 MArch */
+        if (d[5] && d[5].test(win)) continue;
         if (d[4] && !degCtx(n)[d[3]]) continue;
         return { cn: d[2], en: d[0], level: d[3], via: "abbr" };
       }
