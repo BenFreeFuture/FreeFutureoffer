@@ -216,7 +216,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.15.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.16.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -359,7 +359,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.15.0</footer>
+  <footer>自由未来 FreeFuture · v1.16.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -2640,8 +2640,9 @@ const MAJOR_IDX = [
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.15.0";
+const VERSION = "v1.16.0";
 const CHANGELOG = [
+  { v: "v1.16.0", t: "2026-10-07", n: "🤖 安卓也能存到相册了：安卓设备（含微信内置浏览器）点【存到相册】调起系统分享面板选「保存到图库 / 相册」；不支持分享的走长摁图片浮层。原来安卓 <a download> 被微信拦截成「在浏览器打开此网页来下载文件」，所以下不了图——移动端（iOS+安卓）现在统一走分享/浮层存相册路径，桌面端仍是「下载到本机」" },
   { v: "v1.15.0", t: "2026-10-07", n: "📲 iPhone 能存相册了：苹果手机上点【保存到相册】调起系统分享面板，选「存储图像」即存入照片；不支持分享的浏览器（微信等）自动弹出图片浮层，长摁图片也能存。原来 iOS 不认「下载」按钮、画布又长摁不了，所以存不进相册——现已修好" },
   { v: "v1.14.0", t: "2026-10-07", n: "🖼️ 结果页预览改成「长图一眼看全」：预览框定高、整张捷报按比例缩到框内完整显示（宽度自适应、四周居中留白），不用再在框里上下滑动找内容——竖长的手机截图也是一屏看完整张" },
   { v: "v1.13.0", t: "2026-10-07", n: "📷 结果页新增「原始素材」区：可一键【下载原图】到本机、可【原图归档微盘】（与成品图分开计 5 份上限）、文件名可改（默认 = 录取捷报名 + _原素材，png/webp 自动保留原扩展名），把未打码的 offer 原图一起存进微盘" },
@@ -2667,10 +2668,15 @@ const ARCHIVE_API = "https://wedrive.freefuture.com.cn";
 const ARCHIVE_TOKEN = "b68ce52e44184d881188db6158fc787f";
 const ARCHIVE_MAX = 5;          // 同一张图在微盘里最多保留的份数
 
-/* iPhone/iPad 判定：iOS Safari 不认 <a download>，<canvas> 也不能长摁保存，
-   只能走系统分享面板（分享 → 存储图像）或页内浮层长摁保存。 */
+/* 移动端判定：
+   iOS Safari 不认 <a download>，<canvas> 也不能长摁保存，只能走系统分享面板或浮层长摁；
+   安卓 Chrome 支持系统分享面板（选「保存到图库」），但微信等内置 WebView 既不支持分享、
+   又会将 <a download> blob 拦截成「在浏览器打开此网页来下载文件」——所以移动端统一走
+   分享面板 / 浮层存相册路径，桌面端仍用 <a download> 下到本机。 */
 const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const IS_MOBILE = IS_IOS || IS_ANDROID;
 
 const App = {
   errLog: [],
@@ -4560,14 +4566,20 @@ async function showResult(checks) {
 
   await saveHistory(univ, major);
   renderHistory();
-  $("#btn-download").textContent = IS_IOS
-    ? `📲 保存到相册（${mb} MB）`
+  const saveLabel = IS_MOBILE
+    ? (IS_IOS ? `📲 保存到相册（${mb} MB）` : `📲 存到相册（${mb} MB）`)
     : `⬇ 下载到本机（${mb} MB）`;
+  $("#btn-download").textContent = saveLabel;
   const doBtn = $("#btn-download-orig");
-  if (doBtn) doBtn.textContent = IS_IOS ? "📲 原图存相册" : "⬇ 下载原图";
-  if (IS_IOS) {
+  if (doBtn) doBtn.textContent = IS_MOBILE ? "📲 原图存相册" : "⬇ 下载原图";
+  if (IS_MOBILE) {
     const ih = $("#ios-hint");                    // 静默提示，点完再换动态结果
-    if (ih) { ih.textContent = "iPhone 提示：点上面的【保存到相册】→ 在弹出面板里选「存储图像」"; ih.hidden = false; }
+    if (ih) {
+      ih.textContent = IS_IOS
+        ? "iPhone 提示：点上面的【保存到相册】→ 在弹出面板里选「存储图像」"
+        : "安卓提示：点上面的【存到相册】→ 在弹出面板里选「保存到图库 / 相册」；若没弹面板，长按图片也能存";
+      ih.hidden = false;
+    }
   }
   /* 归档状态复位：同一张 offer 重新生成不算新文件，微盘侧仍按 5 份上限滚动 */
   App.resultFP = await computeFP();
@@ -4693,8 +4705,8 @@ async function computeOriginalFP() {
 function downloadOriginal() {
   if (!App.offerFile) { alert("找不到原始素材，请重新上传 offer"); return; }
   const name = App.origName || "录取捷报_原素材.jpg";
-  if (IS_IOS) {                                  // iPhone：走分享面板存相册
-    saveImageToAlbum(App.offerFile, name).then(setIosHint);
+  if (IS_MOBILE) {                               // 移动端：走分享面板/浮层存相册
+    saveImageToAlbum(App.offerFile, name).then(setSaveHint);
     return;
   }
   const a = document.createElement("a");
@@ -4704,8 +4716,8 @@ function downloadOriginal() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-/* ---------- iPhone 存相册（v1.15.0）----------
-   优先调起系统分享面板（选「存储图像」入相册）；
+/* ---------- 移动端存相册（v1.15.0 iOS / v1.16.0 安卓）----------
+   优先调起系统分享面板（选「存储图像 / 保存到图库」入相册）；
    不支持分享的（微信 / 部分内置浏览器）退回页内浮层，长摁图片保存。 */
 async function saveImageToAlbum(blob, filename) {
   try {
@@ -4728,7 +4740,9 @@ function showSaveOverlay(blob) {
     ov = document.createElement("div");
     ov.id = "save-overlay";
     ov.innerHTML =
-      '<div class="so-tip">长摁下方图片 → 选「存储到照片 / 保存图片」</div>' +
+      '<div class="so-tip">' + (IS_IOS
+        ? '长摁下方图片 → 选「存储到照片」'
+        : '长摁下方图片 → 选「保存图片 / 添加到相册」') + '</div>' +
       '<img alt="录取捷报">' +
       '<button type="button" class="so-close">关闭</button>';
     document.body.appendChild(ov);
@@ -4745,12 +4759,13 @@ function showSaveOverlay(blob) {
   ov.hidden = false;
 }
 
-function setIosHint(r) {
+function setSaveHint(r) {
   const el = $("#ios-hint");
   if (!el) return;
+  const saveWord = IS_IOS ? "存储到照片" : "保存图片 / 添加到相册";
   const tip = r === "overlay"
-    ? "已弹出图片：长摁图片 → 选「存储到照片」即可存入相册"
-    : r === "shared" ? "已打开系统分享面板 → 选「存储图像」即可存入相册"
+    ? `已弹出图片：长摁图片 → 选「${saveWord}」即可存入相册`
+    : r === "shared" ? `已打开系统分享面板 → 选「${IS_IOS ? "存储图像" : "保存到图库 / 相册"}」即可存入相册`
     : "";
   el.textContent = tip;
   el.hidden = !tip;
@@ -4812,8 +4827,8 @@ async function download() {
       if (blob.size / 1048576 <= 2) lo = mid; else hi = mid;
     }
   }
-  if (IS_IOS) {                                  // iPhone：调系统分享面板存相册
-    setIosHint(await saveImageToAlbum(blob, App.resultName || "录取捷报.jpg"));
+  if (IS_MOBILE) {                               // 移动端：调系统分享面板/浮层存相册
+    setSaveHint(await saveImageToAlbum(blob, App.resultName || "录取捷报.jpg"));
     return;
   }
   const a = document.createElement("a");
