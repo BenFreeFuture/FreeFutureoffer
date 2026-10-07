@@ -105,6 +105,7 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   max-height:66vh;overflow-y:auto}
 #result-canvas{width:100%;display:block}
 .meta{font-size:14px;color:var(--ink)}
+.orig-box{margin-top:24px;padding:16px;border:1.5px dashed #E5DED2;border-radius:12px;background:#FCFBF7}
 .fn-row{display:flex;gap:8px;margin-bottom:6px}
 .fn-input{flex:1;border:1.5px solid #E5DED2;border-radius:8px;padding:8px 12px;
   font-size:14px;font-weight:700;color:var(--brand-red);font-family:inherit;background:#FFFDF8}
@@ -199,7 +200,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.12.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.13.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -320,13 +321,27 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
       <!-- v1.11.0 归档状态：成功显示存了几份，失败显示原因 -->
       <div id="archive-note" hidden style="margin:8px 0 0;font-size:13px;line-height:1.6"></div>
+
+      <!-- v1.13.0 原始素材：原图下载 / 原图归档微盘 / 改名 -->
+      <div class="orig-box">
+        <div class="sec-title">📷 原始素材（offer 原图 · 未打码）</div>
+        <div class="fn-row">
+          <input id="orig-filename" class="fn-input" spellcheck="false">
+          <button id="btn-orig-rename" class="fn-save" type="button">保存</button>
+        </div>
+        <div class="btn-row">
+          <button class="act-btn primary" id="btn-download-orig">⬇ 下载原图</button>
+          <button class="act-btn ghost" id="btn-archive-orig">☁️ 原图归档微盘</button>
+        </div>
+        <div id="orig-archive-note" hidden style="margin:8px 0 0;font-size:13px;line-height:1.6"></div>
+      </div>
       <div id="history-wrap">
         <div class="sec-title">📁 本地历史（仅存此浏览器，最近 20 张）</div>
         <div id="history"></div>
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.12.0</footer>
+  <footer>自由未来 FreeFuture · v1.13.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -2607,8 +2622,9 @@ const MAJOR_IDX = [
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.12.0";
+const VERSION = "v1.13.0";
 const CHANGELOG = [
+  { v: "v1.13.0", t: "2026-10-07", n: "📷 结果页新增「原始素材」区：可一键【下载原图】到本机、可【原图归档微盘】（与成品图分开计 5 份上限）、文件名可改（默认 = 录取捷报名 + _原素材，png/webp 自动保留原扩展名），把未打码的 offer 原图一起存进微盘" },
   { v: "v1.11.0", t: "2026-10-06", n: "☁️ 「归档到微盘」正式接通企业微信微盘：点一下，已打码成品直接存进 微盘/录取捷报/WB自动存档，不用先下载再传。同一张图最多留 5 份，第 6 次自动挤掉最早那份（网页刷新、改名都不影响上限）。凭据只放在公司服务器，页面里没有密钥" },
   { v: "v1.10.0", t: "2026-10-06", n: "🇨🇳 中文录取通知书也能认了：识别质量差时自动换中文模型（约 2MB，仅中文 offer 才下载）→「港理工 管理学博士项目（DMgt）」这类中文专业名/学位名直接填好；英文侧补回 Doctor of Management / Management。英文侧同时修掉两个老毛病：伯明翰「Programme Title: MSc Robotics FT」专业不再空白（现自动出 机器人学），学位不再被正文里 will be sent to you in due course 的 be 误判成「工程学士」（现正确为 理学硕士）" },
   { v: "v1.8.0", t: "2026-10-06", n: "🎓 学位字典上线（用户汇总表）：本科/硕士/博士 110+ 条目，覆盖英文全称与全部缩写变体（M.Sc./LL.M./Ph.D./MBBS/JD/SJD/PharmD…）——只写缩写也能认出学位；专业名自动剥离学位前缀（MSc Data Science → 数据科学）；日常英文词不再被误认成学位" },
@@ -2635,6 +2651,9 @@ const App = {
   errLog: [],
   T: null,                    // template.json
   offerImg: null,             // 原始 offer Image
+  offerFile: null,            // 原始 offer File（原图素材，供下载/归档）
+  origName: "",               // 原图文件名（录取捷报名 + _原素材）
+  origExt: ".jpg",            // 原图扩展名（按原始素材类型）
   redactions: [],             // 打码区域
   processed: null,            // 处理后 offer canvas
   ocrLines: [],               // OCR 行
@@ -2713,6 +2732,7 @@ async function handleFile(f) {
   }
   const url = URL.createObjectURL(f);
   App.offerImg = await FreePoster.loadImg(url);
+  App.offerFile = f;          // 保留原始素材（原图），供下载/归档
   showPage("page-ocring");
   runOCR();
 }
@@ -4435,6 +4455,20 @@ function initResult() {
   $("#btn-again").addEventListener("click", () => showPage("page-welcome"));
   $("#btn-edit").addEventListener("click", () => showPage("page-confirm"));
   $("#btn-archive").addEventListener("click", archiveToWedrive);
+  /* 原始素材：下载原图 / 原图归档微盘 / 改名 */
+  $("#btn-download-orig").addEventListener("click", downloadOriginal);
+  $("#btn-archive-orig").addEventListener("click", archiveOriginal);
+  $("#btn-orig-rename").addEventListener("click", () => {
+    let name = $("#orig-filename").value.trim();
+    if (!name) { alert("文件名不能为空"); return; }
+    if (!/\.(jpe?g|png|webp)$/i.test(name)) name += App.origExt;
+    App.origName = name;
+    $("#orig-filename").value = name;
+    const b = $("#btn-orig-rename");
+    b.textContent = "✓ 已保存";
+    b.classList.add("saved");
+    setTimeout(() => { b.textContent = "保存"; b.classList.remove("saved"); }, 2000);
+  });
   /* 重命名：点保存后新文件名生效（自动补 .jpg），下载即用新名 */
   $("#btn-rename").addEventListener("click", () => {
     let name = $("#result-filename").value.trim();
@@ -4481,6 +4515,14 @@ async function showResult(checks) {
     String(now.getDate()).padStart(2, "0");
   App.resultName = datePrefix + "_" + univ + (major ? "_" + major : "") + ".jpg";
 
+  /* 原图文件名：录取捷报名 + _原素材 + 原始素材扩展名（png/webp 保留，jpeg/webp 都按原样） */
+  App.origExt = (App.offerFile && App.offerFile.type === "image/png") ? ".png"
+              : (App.offerFile && App.offerFile.type === "image/webp") ? ".webp" : ".jpg";
+  const base = App.resultName.replace(/\.jpe?g$/i, "");
+  App.origName = base + "_原素材" + App.origExt;
+  const origInput = $("#orig-filename");
+  origInput.value = App.origName;
+
   const fnInput = $("#result-filename");
   fnInput.value = App.resultName;
   const saveBtn = $("#btn-rename");
@@ -4501,6 +4543,9 @@ async function showResult(checks) {
   ab.disabled = false;
   ab.textContent = "☁️ 归档到微盘";
   setArchiveNote("", "");
+  const ob = $("#btn-archive-orig");
+  if (ob) { ob.disabled = !App.offerFile; ob.textContent = "☁️ 原图归档微盘"; }
+  setOrigNote("", "");
   showPage("page-result");
 }
 
@@ -4586,6 +4631,71 @@ async function archiveToWedrive() {
       ? "连不上归档服务（网络不通或服务未启动）— 可先下载到本机再手动传微盘"
       : "归档失败：" + m + " — 可先下载到本机再手动传微盘", "err");
     App.errLog.push("归档失败: " + m);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------- 原图素材：下载 / 归档（v1.13.0）---------- */
+function setOrigNote(text, kind) {
+  const n = $("#orig-archive-note");
+  if (!n) return;
+  n.textContent = text;
+  n.hidden = !text;
+  n.style.color = kind === "err" ? "#b3261e" : (kind === "ok" ? "#1f7a3d" : "#666");
+}
+/* 原图指纹：与成品图不同的命名空间（fp 带 _orig），5 份上限互不干扰 */
+async function computeOriginalFP() {
+  const parts = ["ORIG"];
+  try {
+    const c = document.createElement("canvas");
+    c.width = 64; c.height = 64;
+    const cx = c.getContext("2d");
+    cx.drawImage(App.offerImg, 0, 0, 64, 64);
+    parts.push(c.toDataURL("image/jpeg", 0.6));
+  } catch (e) { /* 取不到图就只按标记算 */ }
+  return (await sha256hex(parts.join("#"))).slice(0, 12);
+}
+/* 下载原图到本机（保留原始素材，不重新编码） */
+function downloadOriginal() {
+  if (!App.offerFile) { alert("找不到原始素材，请重新上传 offer"); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(App.offerFile);
+  a.download = App.origName || "录取捷报_原素材.jpg";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+/* 原图归档到微盘（同一张图最多 5 份，与原成品图分开计） */
+async function archiveOriginal() {
+  if (!App.offerFile) { setOrigNote("找不到原始素材，请重新上传 offer", "err"); return; }
+  const btn = $("#btn-archive-orig");
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = "☁️ 归档中…";
+  setOrigNote("正在上传原图到企业微信微盘…", "");
+  try {
+    const b64 = await blobToB64(App.offerFile);
+    const fp = await computeOriginalFP();
+    const resp = await fetch(ARCHIVE_API + "/api/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Archive-Token": ARCHIVE_TOKEN },
+      body: JSON.stringify({ filename: App.origName, fp: fp, b64: b64 }),
+    });
+    const j = await resp.json().catch(() => null);
+    if (!j || !j.ok) throw new Error((j && j.err) || ("中转服务返回 HTTP " + resp.status));
+    const max = j.max_copies || ARCHIVE_MAX;
+    btn.textContent = `✓ 已归档 ${j.copies}/${max}`;
+    const tail = (j.removed && j.removed.length)
+      ? `（已达上限，自动清掉最早 ${j.removed.length} 份）` : "";
+    setOrigNote(`已存入 微盘 / 录取捷报 / WB自动存档：${j.filename} · 原图保留 ${j.copies}/${max} 份${tail}`, "ok");
+  } catch (e) {
+    btn.textContent = label;
+    const m = String(e && e.message || e);
+    const net = /fetch|network|Load failed|Failed to/i.test(m) && !/HTTP \d/.test(m);
+    setOrigNote(net
+      ? "连不上归档服务（网络不通或服务未启动）— 可先下载到本机再手动传微盘"
+      : "原图归档失败：" + m + " — 可先下载到本机再手动传微盘", "err");
+    App.errLog.push("原图归档失败: " + m);
   } finally {
     btn.disabled = false;
   }
