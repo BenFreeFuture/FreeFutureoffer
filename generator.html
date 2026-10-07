@@ -199,7 +199,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.11.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.12.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -326,7 +326,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.11.0</footer>
+  <footer>自由未来 FreeFuture · v1.12.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -579,35 +579,35 @@ class PosterRenderer {
     ctx.restore();                                    // 恢复 _applyTransform 的 save（必须配平，泄漏会毁掉后续所有层）
   }
 
-  /* ---- 核心图：等比 + 贴白卡两边 + 顶部对齐（紧贴冠名） + 超线才裁 ----
-   * 满意版定稿 2026-10-05：offer 从冠名底直接开始（信纸从信封口伸出），
-   * 不再垂直居中。返回渲染信息供校验显示 */
+  /* ---- 核心图：完整展示（contain，绝不裁切）+ 在白卡可用区内居中 ----
+   * 用户 2026-10-07 明确：截图必须完整展示，四周空白由 18% 衬底承担。
+   * 旧版"宽贴白卡两边 + 超线才裁"会把竖长图裁掉大半，已废弃。
+   * 横图 contain 卡在可用宽 -> 水平贴白卡两边、上下居中、上下留白由衬底填；
+   * 竖图 contain 卡在可用高 -> 占满高、水平居中、左右留白由衬底填。 */
   drawCore(L, offer) {
     const ctx = this.ctx;
     const a = this.anchors;
     const card = a.white_card_in;                     // [x,y,w,h] inch
-    const W_in = card[2];                             // 贴白卡两边（定稿）
-    const ratio = offer.height / offer.width;         // 高/宽
-    let H_in = W_in * ratio;
-    let cropped = false, srcH = offer.height;
-    const TOP_in = a.core_top_in;                     // 冠名底线 = 顶部对齐位
-    const MAX_H = card[1] + card[3] - TOP_in;         // 到白卡底
+    const TOP_in = a.core_top_in;                     // 可用区顶（冠名底线）
+    const availW = card[2];                           // 白卡可用宽
+    const availH = (card[1] + card[3]) - TOP_in;      // 可用高（到白卡底）
+    const ow = offer.width, oh = offer.height;
 
-    if (H_in > MAX_H) {                               // 超线才裁：裁到白卡底
-      const targetRatio = MAX_H / W_in;
-      srcH = Math.max(1, Math.round(offer.width * targetRatio));
-      while (srcH / offer.width > targetRatio && srcH > 1) srcH -= 1;
-      H_in = srcH / offer.width * W_in;
-      cropped = true;
-    }
-    const top_in = TOP_in;                            // 顶部对齐（不再居中）
-    const x = px(Math.round(card[0] * EMU_IN), this.S);
-    const y = px(Math.round(top_in * EMU_IN), this.S);
-    const w = px(Math.round(W_in * EMU_IN), this.S);
-    const h = px(Math.round(H_in * EMU_IN), this.S);
+    // contain：整张图完整落下，不裁切
+    const scale = Math.min(availW / ow, availH / oh);
+    const dw = ow * scale, dh = oh * scale;
 
-    ctx.drawImage(offer, 0, 0, offer.width, srcH, x, y, w, h);
-    return { cropped, bottom_in: top_in + H_in, top_in, W_in, H_in };
+    // 在可用区内居中（水平 + 垂直）
+    const x_in = card[0] + (availW - dw) / 2;
+    const y_in = TOP_in + (availH - dh) / 2;
+
+    const x = px(Math.round(x_in * EMU_IN), this.S);
+    const y = px(Math.round(y_in * EMU_IN), this.S);
+    const w = px(Math.round(dw * EMU_IN), this.S);
+    const h = px(Math.round(dh * EMU_IN), this.S);
+
+    ctx.drawImage(offer, 0, 0, ow, oh, x, y, w, h);
+    return { cropped: false, bottom_in: y_in + dh, top_in: y_in, W_in: dw, H_in: dh };
   }
 
   /* ---- 静态文字：主标题 140pt ---- */
@@ -2607,7 +2607,7 @@ const MAJOR_IDX = [
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.11.0";
+const VERSION = "v1.12.0";
 const CHANGELOG = [
   { v: "v1.11.0", t: "2026-10-06", n: "☁️ 「归档到微盘」正式接通企业微信微盘：点一下，已打码成品直接存进 微盘/录取捷报/WB自动存档，不用先下载再传。同一张图最多留 5 份，第 6 次自动挤掉最早那份（网页刷新、改名都不影响上限）。凭据只放在公司服务器，页面里没有密钥" },
   { v: "v1.10.0", t: "2026-10-06", n: "🇨🇳 中文录取通知书也能认了：识别质量差时自动换中文模型（约 2MB，仅中文 offer 才下载）→「港理工 管理学博士项目（DMgt）」这类中文专业名/学位名直接填好；英文侧补回 Doctor of Management / Management。英文侧同时修掉两个老毛病：伯明翰「Programme Title: MSc Robotics FT」专业不再空白（现自动出 机器人学），学位不再被正文里 will be sent to you in due course 的 be 误判成「工程学士」（现正确为 理学硕士）" },
@@ -4422,8 +4422,8 @@ function validate() {
   const card = a.white_card_in;
   return [
     { k: "等比缩放", v: "无变形", ok: true },
-    { k: "核心图贴边", v: `左 ${card[0].toFixed(3)}in`, ok: true },
-    { k: "顶部对齐", v: "紧贴冠名下方", ok: true },
+    { k: "核心图完整展示", v: "contain 不裁切", ok: true },
+    { k: "居中于卡片区", v: "四周留白由衬底填", ok: true },
     { k: "底边 ≤ 白卡底线", v: `${card[1] + card[3]}in`, ok: true },
     { k: "图层数", v: App.T.layers.length + " 层完整", ok: true },
   ];
