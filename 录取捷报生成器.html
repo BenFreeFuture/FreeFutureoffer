@@ -109,6 +109,16 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
 #result-canvas{max-width:100%;max-height:100%;width:auto;height:auto;display:block;
   border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.10)}
 .meta{font-size:14px;color:var(--ink)}
+/* v1.15.0 iPhone 存相册提示 + 长摁保存浮层 */
+#ios-hint{background:#FFF6E9;border:1px solid #F6D3A1;border-radius:10px;padding:10px 14px}
+#save-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;
+  background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;padding:20px}
+#save-overlay[hidden]{display:none}
+#save-overlay .so-tip{color:#fff;font-size:14px;text-align:center;line-height:1.6}
+#save-overlay img{max-width:92vw;max-height:74vh;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#save-overlay .so-close{background:#fff;color:#222;border:0;border-radius:20px;
+  padding:9px 28px;font-size:15px;font-weight:700}
 .orig-box{margin-top:24px;padding:16px;border:1.5px dashed #E5DED2;border-radius:12px;background:#FCFBF7}
 .fn-row{display:flex;gap:8px;margin-bottom:6px}
 .fn-input{flex:1;border:1.5px solid #E5DED2;border-radius:8px;padding:8px 12px;
@@ -206,7 +216,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.14.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.15.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -325,6 +335,8 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
         <button class="act-btn ghost" id="btn-again">🔁 再生成一张</button>
         <button class="act-btn ghost" id="btn-edit">✏️ 回去改文字</button>
       </div>
+      <!-- v1.15.0 iPhone 存相册提示（仅 iOS 显示） -->
+      <div id="ios-hint" hidden style="margin:8px 0 0;font-size:13px;line-height:1.6"></div>
       <!-- v1.11.0 归档状态：成功显示存了几份，失败显示原因 -->
       <div id="archive-note" hidden style="margin:8px 0 0;font-size:13px;line-height:1.6"></div>
 
@@ -347,7 +359,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.14.0</footer>
+  <footer>自由未来 FreeFuture · v1.15.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -2628,8 +2640,9 @@ const MAJOR_IDX = [
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.14.0";
+const VERSION = "v1.15.0";
 const CHANGELOG = [
+  { v: "v1.15.0", t: "2026-10-07", n: "📲 iPhone 能存相册了：苹果手机上点【保存到相册】调起系统分享面板，选「存储图像」即存入照片；不支持分享的浏览器（微信等）自动弹出图片浮层，长摁图片也能存。原来 iOS 不认「下载」按钮、画布又长摁不了，所以存不进相册——现已修好" },
   { v: "v1.14.0", t: "2026-10-07", n: "🖼️ 结果页预览改成「长图一眼看全」：预览框定高、整张捷报按比例缩到框内完整显示（宽度自适应、四周居中留白），不用再在框里上下滑动找内容——竖长的手机截图也是一屏看完整张" },
   { v: "v1.13.0", t: "2026-10-07", n: "📷 结果页新增「原始素材」区：可一键【下载原图】到本机、可【原图归档微盘】（与成品图分开计 5 份上限）、文件名可改（默认 = 录取捷报名 + _原素材，png/webp 自动保留原扩展名），把未打码的 offer 原图一起存进微盘" },
   { v: "v1.11.0", t: "2026-10-06", n: "☁️ 「归档到微盘」正式接通企业微信微盘：点一下，已打码成品直接存进 微盘/录取捷报/WB自动存档，不用先下载再传。同一张图最多留 5 份，第 6 次自动挤掉最早那份（网页刷新、改名都不影响上限）。凭据只放在公司服务器，页面里没有密钥" },
@@ -2653,6 +2666,11 @@ const CHANGELOG = [
 const ARCHIVE_API = "https://wedrive.freefuture.com.cn";
 const ARCHIVE_TOKEN = "b68ce52e44184d881188db6158fc787f";
 const ARCHIVE_MAX = 5;          // 同一张图在微盘里最多保留的份数
+
+/* iPhone/iPad 判定：iOS Safari 不认 <a download>，<canvas> 也不能长摁保存，
+   只能走系统分享面板（分享 → 存储图像）或页内浮层长摁保存。 */
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 const App = {
   errLog: [],
@@ -4542,7 +4560,15 @@ async function showResult(checks) {
 
   await saveHistory(univ, major);
   renderHistory();
-  $("#btn-download").textContent = `⬇ 下载到本机（${mb} MB）`;
+  $("#btn-download").textContent = IS_IOS
+    ? `📲 保存到相册（${mb} MB）`
+    : `⬇ 下载到本机（${mb} MB）`;
+  const doBtn = $("#btn-download-orig");
+  if (doBtn) doBtn.textContent = IS_IOS ? "📲 原图存相册" : "⬇ 下载原图";
+  if (IS_IOS) {
+    const ih = $("#ios-hint");                    // 静默提示，点完再换动态结果
+    if (ih) { ih.textContent = "iPhone 提示：点上面的【保存到相册】→ 在弹出面板里选「存储图像」"; ih.hidden = false; }
+  }
   /* 归档状态复位：同一张 offer 重新生成不算新文件，微盘侧仍按 5 份上限滚动 */
   App.resultFP = await computeFP();
   App.archiveCopies = 0;
@@ -4666,11 +4692,68 @@ async function computeOriginalFP() {
 /* 下载原图到本机（保留原始素材，不重新编码） */
 function downloadOriginal() {
   if (!App.offerFile) { alert("找不到原始素材，请重新上传 offer"); return; }
+  const name = App.origName || "录取捷报_原素材.jpg";
+  if (IS_IOS) {                                  // iPhone：走分享面板存相册
+    saveImageToAlbum(App.offerFile, name).then(setIosHint);
+    return;
+  }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(App.offerFile);
-  a.download = App.origName || "录取捷报_原素材.jpg";
+  a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/* ---------- iPhone 存相册（v1.15.0）----------
+   优先调起系统分享面板（选「存储图像」入相册）；
+   不支持分享的（微信 / 部分内置浏览器）退回页内浮层，长摁图片保存。 */
+async function saveImageToAlbum(blob, filename) {
+  try {
+    const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: filename });
+      return "shared";
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return "cancel";   // 用户取消，不算失败
+  }
+  showSaveOverlay(blob);
+  return "overlay";
+}
+
+function showSaveOverlay(blob) {
+  const url = URL.createObjectURL(blob);
+  let ov = document.getElementById("save-overlay");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "save-overlay";
+    ov.innerHTML =
+      '<div class="so-tip">长摁下方图片 → 选「存储到照片 / 保存图片」</div>' +
+      '<img alt="录取捷报">' +
+      '<button type="button" class="so-close">关闭</button>';
+    document.body.appendChild(ov);
+    ov.querySelector(".so-close").addEventListener("click", () => {
+      const im = ov.querySelector("img");
+      if (im && im.src) URL.revokeObjectURL(im.src);
+      im.removeAttribute("src");
+      ov.hidden = true;
+    });
+  }
+  const img = ov.querySelector("img");
+  if (img.src) URL.revokeObjectURL(img.src);
+  img.src = url;
+  ov.hidden = false;
+}
+
+function setIosHint(r) {
+  const el = $("#ios-hint");
+  if (!el) return;
+  const tip = r === "overlay"
+    ? "已弹出图片：长摁图片 → 选「存储到照片」即可存入相册"
+    : r === "shared" ? "已打开系统分享面板 → 选「存储图像」即可存入相册"
+    : "";
+  el.textContent = tip;
+  el.hidden = !tip;
 }
 /* 原图归档到微盘（同一张图最多 5 份，与原成品图分开计） */
 async function archiveOriginal() {
@@ -4728,6 +4811,10 @@ async function download() {
       blob = await encodeWithConfetti(t, mid);
       if (blob.size / 1048576 <= 2) lo = mid; else hi = mid;
     }
+  }
+  if (IS_IOS) {                                  // iPhone：调系统分享面板存相册
+    setIosHint(await saveImageToAlbum(blob, App.resultName || "录取捷报.jpg"));
+    return;
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
