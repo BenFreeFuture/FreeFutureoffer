@@ -100,10 +100,14 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   cursor:pointer;text-decoration:underline}
 
 /* ---------- 结果页 ---------- */
-.result-grid{display:grid;grid-template-columns:340px 1fr;gap:30px;align-items:start}
+.result-grid{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:30px;align-items:start}
+/* v1.14.0：预览改为「长图整张看完」——盒子定高（66vh），整图按 contain 缩放铺满高度、
+   宽度随图比例自适应，四周留白居中，不再上下滑动 */
 .preview{background:#fff;border:1px solid #F0E4D2;border-radius:12px;
-  max-height:66vh;overflow-y:auto}
-#result-canvas{width:100%;display:block}
+  height:66vh;min-height:300px;padding:6px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center}
+#result-canvas{max-width:100%;max-height:100%;width:auto;height:auto;display:block;
+  border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.10)}
 .meta{font-size:14px;color:var(--ink)}
 .orig-box{margin-top:24px;padding:16px;border:1.5px dashed #E5DED2;border-radius:12px;background:#FCFBF7}
 .fn-row{display:flex;gap:8px;margin-bottom:6px}
@@ -141,7 +145,9 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   .info h3{margin-top:12px}
   .big-btn,.btn-row{max-width:100%}
   .btn-row{position:sticky;bottom:8px}
-  .preview{max-height:none}
+  /* 手机上恢复「满宽整张」：宽度占满、高度随比例，由整页滚动 */
+  .preview{height:auto;min-height:0;max-height:none;padding:0}
+  #result-canvas{width:100%;height:auto;max-height:none;border-radius:8px;box-shadow:none}
   .act-btn{padding:15px;font-size:16px;min-height:48px}
   .field input{min-height:48px}
   .chk input{width:24px;height:24px}
@@ -200,7 +206,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.13.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.14.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -341,7 +347,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid #F0E4D2;
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.13.0</footer>
+  <footer>自由未来 FreeFuture · v1.14.0</footer>
 </div>
 
 <script>/*! For license information please see tesseract.min.js.LICENSE.txt */
@@ -2622,8 +2628,9 @@ const MAJOR_IDX = [
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.13.0";
+const VERSION = "v1.14.0";
 const CHANGELOG = [
+  { v: "v1.14.0", t: "2026-10-07", n: "🖼️ 结果页预览改成「长图一眼看全」：预览框定高、整张捷报按比例缩到框内完整显示（宽度自适应、四周居中留白），不用再在框里上下滑动找内容——竖长的手机截图也是一屏看完整张" },
   { v: "v1.13.0", t: "2026-10-07", n: "📷 结果页新增「原始素材」区：可一键【下载原图】到本机、可【原图归档微盘】（与成品图分开计 5 份上限）、文件名可改（默认 = 录取捷报名 + _原素材，png/webp 自动保留原扩展名），把未打码的 offer 原图一起存进微盘" },
   { v: "v1.11.0", t: "2026-10-06", n: "☁️ 「归档到微盘」正式接通企业微信微盘：点一下，已打码成品直接存进 微盘/录取捷报/WB自动存档，不用先下载再传。同一张图最多留 5 份，第 6 次自动挤掉最早那份（网页刷新、改名都不影响上限）。凭据只放在公司服务器，页面里没有密钥" },
   { v: "v1.10.0", t: "2026-10-06", n: "🇨🇳 中文录取通知书也能认了：识别质量差时自动换中文模型（约 2MB，仅中文 offer 才下载）→「港理工 管理学博士项目（DMgt）」这类中文专业名/学位名直接填好；英文侧补回 Doctor of Management / Management。英文侧同时修掉两个老毛病：伯明翰「Programme Title: MSc Robotics FT」专业不再空白（现自动出 机器人学），学位不再被正文里 will be sent to you in due course 的 be 误判成「工程学士」（现正确为 理学硕士）" },
