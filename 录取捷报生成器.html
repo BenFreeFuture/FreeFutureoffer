@@ -266,7 +266,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.2</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.3</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -420,7 +420,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.2</footer>
+  <footer>自由未来 FreeFuture · v1.19.3</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -519,12 +519,14 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <div class="btn-row">
     <button class="act-btn primary" id="btn-wx-push">📤 传输到草稿箱</button>
     <button class="act-btn ghost" id="btn-wx-copy">📋 复制内容</button>
-    <button class="act-btn ghost" id="btn-wx-md">⬇ 下载 .md</button>
+    <button class="act-btn ghost" id="btn-wx-md">📄 下载 md 格式</button>
   </div>
   <div id="wx-note" hidden style="margin:8px 0 0;font-size:13px;line-height:1.6"></div>
 
   <div class="wx-tip">
-    传输会把本张录取捷报海报一并作为<strong>封面</strong>与<strong>正文首图</strong>上传到公众号。<br>
+    传输会在公众号「<strong>内容管理 → 草稿箱</strong>」创建一条<strong>【贴图】草稿</strong>（新的创作 → 贴图）：<br>
+    本张录取捷报海报作为<strong>贴图图片</strong>，标题取文件名，正文即下面的草稿正文。<br>
+    「📄 下载 md 格式」= 存一份 .md 到本机 + 同步存进<strong>企业微信</strong>（在线文档 / 微盘）。<br>
     若提示「40164 / invalid ip」：需先在<strong>微信公众平台 → 设置与开发 → 安全中心 → IP白名单</strong>
     把服务器 IP <code>43.156.63.80</code> 加进去，再点一次即可。
   </div>
@@ -3007,8 +3009,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.2";
+const VERSION = "v1.19.3";
 const CHANGELOG = [
+  { v: "v1.19.3", t: "2026-10-09", n: "① 勾了「没有硕士教育背景」后，正文不再出现「硕士：没有硕士教育背景」这一行——本科直申本来就没硕士背景，整行删掉；② 传输页「下载 .md」改为「📄 下载 md 格式」：点击既存一份到本机，也同步存进企业微信（优先建「在线文档」，文档接口未授权则自动退回微盘「录取捷报/公众号md」）；③ 公众号草稿改为创建【贴图】（图片消息）类型——「新的创作 → 贴图 → 保存草稿」，若贴图接口不可用会自动回退为文章草稿并在页面上明确提示" },
   { v: "v1.19.2", t: "2026-10-09", n: "📱 手机/平板交互优化：① 修好打码页「offer 图上没法滑动」——浏览模式下手指在图上可正常滚动/缩放（原来把触摸手势全吃掉，只能抠图外的窄边），只有笔刷模式下才锁定触摸；② 手机左右留白加宽到 18px 给手指留落点，底部避开 iPhone Home 条/刘海安全区；③ iOS/iPadOS 聚焦表单不再自动放大页面（输入框统一 16px）；④ 去掉会盖住输入框的悬浮按钮条，改为左下角「↑ 顶部」浮动按钮，长页面一键回顶" },
   { v: "v1.19.1", t: "2026-10-09", n: "🏫 学生信息页本科/硕士院校下拉新增「其他（请填写）」：选中即展开手写输入框，手动填院校名，拼进正文『学生概括』（原 5 个固定档仍保留）。同步加固公众号推送：录取捷报图除作封面外，正文首图补 data-src 属性并强制 https，确保草稿里图片稳定显示（图片→贴图、标题→标题、正文→正文草稿）" },
   { v: "v1.19.0", t: "2026-10-09", n: "📤 结果页「传公众号草稿」按钮移到预览图正下方，点击后先开「学生信息页」让同事勾选：同学代号（代入正文 X同学）、本科/硕士院校下拉（世界前100/前200/985/211/双非）+专业+GPA、无硕士勾选、科研/发表/竞赛/实习/奖学金（填0自动不显示）、其他优势（选填）。「完成填写后生成草稿」按以上拼进正文『学生概括』段；「跳过下一页」走原默认草稿。标题自动变「校名+专业+1！」格式。网页背景整体改为白色" },
@@ -5307,9 +5310,9 @@ function buildStudentBlock() {
   if (s.ugGpa) ug[ug.length - 1] += "（GPA：" + s.ugGpa + "）";
   lines.push(ug.join(""));
 
-  if (s.noMaster) {
-    lines.push("硕士：没有硕士教育背景");
-  } else {
+  // v1.19.3：勾了「没有硕士教育背景」= 本科直申，本来就没有硕士背景 →
+  // 正文整行不出现（不再写「硕士：没有硕士教育背景」这种废话）
+  if (!s.noMaster) {
     const pg = [];
     pg.push("硕士：" + (s.pgSchool || "—"));
     if (s.pgMajor) pg[pg.length - 1] += " · " + s.pgMajor;
@@ -5398,15 +5401,17 @@ async function pushWechatDraft() {
     const j = await resp.json().catch(() => null);
     if (!j || !j.ok) throw new Error((j && j.err) || ("中继返回 HTTP " + resp.status));
     btn.textContent = "✓ 已传草稿箱";
-    setWxNote("已创建公众号草稿（media_id：" + (j.media_id || "—") +
-      "）。去公众号后台「草稿箱」预览确认后手动发布。", "ok");
+    const kindTxt = j.article_type === "newspic" ? "贴图" : "文章";
+    setWxNote("已在公众号「草稿箱」创建【" + kindTxt + "】草稿（media_id：" + (j.media_id || "—") +
+      "）。" + (j.fallback ? "⚠️ 贴图未创建成功，已回退为文章草稿：" + j.fallback + "。" : "") +
+      "去公众号后台「内容管理 → 草稿箱」核对后手动发布。", j.fallback ? "err" : "ok");
   } catch (e) {
     btn.textContent = label;
     const m = String(e && e.message || e);
     const net = /fetch|network|Load failed|Failed to/i.test(m) && !/HTTP \d/.test(m);
     setWxNote(net
-      ? "连不上草稿中继（网络不通或服务未启动）— 可用「复制内容 / 下载 .md」手动发"
-      : "传输失败：" + m + " — 可用「复制内容 / 下载 .md」手动发", "err");
+      ? "连不上草稿中继（网络不通或服务未启动）— 可用「复制内容 / 下载 md 格式」手动发"
+      : "传输失败：" + m + " — 可用「复制内容 / 下载 md 格式」手动发", "err");
     App.errLog.push("公众号草稿传输失败: " + m);
   } finally {
     btn.disabled = false;
@@ -5439,12 +5444,46 @@ function downloadWechatMd() {
   const digest = $("#wx-digest").value.trim();
   const content = $("#wx-content").value;
   const md = "# " + title + "\n\n> 摘要：" + digest + "\n\n" + content + "\n";
+  // ① 本地下载一份 .md
   const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = (title || "录取捷报") + ".md";
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  // ② 同步存一份到企业微信（优先「在线文档」，文档接口未授权则退回微盘 .md 文件）
+  saveMdToWecom(title, md);
+}
+
+/* v1.19.3：把 md 存到企业微信。
+   服务端优先调 wedoc/create_doc 建「在线文档」；若应用未开「文档」接口权限（48002），
+   自动退回把 .md 上传到微盘「录取捷报/公众号md」目录，前端按返回的 kind 显示。 */
+async function saveMdToWecom(title, md) {
+  const btn = $("#btn-wx-md");
+  const label = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "📄 存企业微信…"; }
+  setWxNote("已下载 .md，正在存到企业微信…", "");
+  try {
+    const resp = await fetch(MP_API + "/api/wechat-md", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Archive-Token": ARCHIVE_TOKEN },
+      body: JSON.stringify({ title: title || "录取捷报", content: md }),
+    });
+    const j = await resp.json().catch(() => null);
+    if (!j || !j.ok) throw new Error((j && j.err) || ("中继返回 HTTP " + resp.status));
+    if (j.kind === "doc") {
+      setWxNote("已下载 .md；并已存为企业微信《文档》" +
+        (j.url ? "：" + j.url : "（在微盘「录取捷报」里）") + "。", "ok");
+    } else {
+      setWxNote("已下载 .md；并已存入企业微信微盘「" + (j.folder || "录取捷报/公众号md") +
+        "」→ " + (j.filename || "") + (j.note ? "。" + j.note : ""), "ok");
+    }
+  } catch (e) {
+    const m = String(e && e.message || e);
+    setWxNote("已下载 .md；但存企业微信失败：" + m, "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
 }
 
 /* 定格彩带编码：t 为动画相位，二分质量压到 ≤2MB */
