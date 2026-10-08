@@ -63,13 +63,16 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
 .sec-title{font-size:16px;font-weight:800;color:var(--brand-red);margin:22px 0 10px}
 .confirm-grid{display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:start}
 .redact-box{background:#FFF;border:1px solid var(--line);border-radius:12px;padding:12px}
-#redact-canvas{width:100%;border-radius:8px;display:block;touch-action:none}
+/* v1.19.2 触摸修复：浏览模式下允许手指在 offer 图上滚动/缩放（原来无条件 none，
+   把整张图上的触摸手势全吃掉，手指只能在图外窄边找落点 —— 同事反馈「没地方翻」的根因）；
+   仅笔刷模式下禁用触摸，防止画框时页面跟着滚 */
+#redact-canvas{width:100%;border-radius:8px;display:block;touch-action:auto}
 .redact-tools{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .tool{border:1.5px solid #E5DED2;background:#fff;border-radius:8px;padding:6px 14px;
   font-size:13px;font-weight:700;cursor:pointer;color:#555}
 .tool.on{background:var(--crimson);color:#fff;border-color:var(--crimson)}
 .tool-hint{font-size:11.5px;color:var(--muted)}
-#redact-canvas.brushing{cursor:crosshair}
+#redact-canvas.brushing{cursor:crosshair;touch-action:none}
 #redact-summary{font-size:13px;margin-top:10px}
 #wm-badge{display:inline-block;background:var(--paper);color:var(--brand-red);
   font-size:12px;border-radius:8px;padding:2px 10px;margin-top:6px}
@@ -147,13 +150,15 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
 
 /* ---------- 响应式（iPhone 竖屏 <768px） ---------- */
 @media (max-width:767px){
-  .page{padding:16px 16px 40px}
+  /* v1.19.2：侧边留白 16→18px 给手指留落点；左右下三边让出 iPhone 刘海/Home 条安全区 */
+  .page{padding:16px calc(18px + env(safe-area-inset-right,0px)) calc(44px + env(safe-area-inset-bottom,0px)) calc(18px + env(safe-area-inset-left,0px))}
   .welcome-grid,.confirm-grid,.result-grid{grid-template-columns:1fr;gap:22px}
   #dropzone{min-height:34vh;padding:34px 18px}
   .tool-head h1{font-size:21px}
   .info h3{margin-top:12px}
   .big-btn,.btn-row{max-width:100%}
-  .btn-row{position:sticky;bottom:8px}
+  /* v1.19.2：取消 .btn-row 的 sticky —— 原设计让它悬浮在屏幕底部，结果在长表单（学生信息页）
+     与长正文（公众号页）里一直盖住输入框和 textarea；改回正常流式排布，长页用左下角「↑ 顶部」回顶 */
   /* 手机上恢复「满宽整张」：宽度占满、高度随比例，由整页滚动 */
   .preview{height:auto;min-height:0;max-height:none;padding:0}
   #result-canvas{width:100%;height:auto;max-height:none;border-radius:8px;box-shadow:none}
@@ -170,9 +175,9 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
 .wx-tip{font-size:12.5px;color:var(--muted);line-height:1.7;margin-top:14px;
   padding:10px 14px;background:#F7F6F2;border-left:4px solid var(--cream);border-radius:8px}
 #wx-content{width:100%;resize:vertical;line-height:1.7;font-family:inherit;
-  border:1.5px solid #E5DED2;border-radius:10px;padding:12px;font-size:14px}
+  border:1.5px solid #E5DED2;border-radius:10px;padding:12px;font-size:16px}
 #wx-title,#wx-digest{width:100%;border:1.5px solid #E5DED2;border-radius:10px;
-  padding:10px 12px;font-size:15px;font-family:inherit}
+  padding:10px 12px;font-size:16px;font-family:inherit}
 #wx-digest{max-width:520px}
 
 /* ---------- 传公众号草稿按钮（结果页预览正下方） ---------- */
@@ -188,19 +193,20 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
 .stu-sub{font-size:13px;font-weight:700;color:var(--muted);margin:14px 0 6px}
 .stu-row{display:grid;grid-template-columns:1.2fr 1.3fr .9fr;gap:10px}
 .stu-row2{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+/* v1.19.2：表单控件统一 16px —— iOS(iPhone/iPad) 聚焦 <16px 输入框会自动放大整页，16px 是安全线 */
 .stu-select,.stu-input{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;
-  font-size:14px;font-family:inherit;background:#fff;color:var(--ink);width:100%}
+  font-size:16px;font-family:inherit;background:#fff;color:var(--ink);width:100%}
 .stu-select:focus,.stu-input:focus{outline:none;border-color:var(--cream);
   box-shadow:0 0 0 3px rgba(246,211,161,.3)}
 .stu-num{display:flex;flex-direction:column;gap:4px}
 .stu-num label{font-size:12px;color:var(--muted);text-align:center}
 .stu-num input{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:8px 6px;
-  font-size:14px;text-align:center;font-family:inherit;background:#fff;color:var(--ink)}
+  font-size:16px;text-align:center;font-family:inherit;background:#fff;color:var(--ink)}
 .stu-num input:focus{outline:none;border-color:var(--cream);
   box-shadow:0 0 0 3px rgba(246,211,161,.3)}
 .stu-pg-disabled{opacity:.4;pointer-events:none}
 .stu-other{width:100%;margin:8px 0 0;border:1.5px solid var(--line);border-radius:10px;
-  padding:10px 14px;font-size:15px;font-family:inherit;background:#fff;color:var(--ink)}
+  padding:10px 14px;font-size:16px;font-family:inherit;background:#fff;color:var(--ink)}
 .stu-other[hidden]{display:none}
 @media (max-width:767px){
   .stu-row{grid-template-columns:1fr}
@@ -260,7 +266,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.1</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.2</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -322,6 +328,8 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
 
 <!-- ================= Bug 反馈（全页浮动） ================= -->
 <button id="fab-feedback" type="button">🐞<br>反馈</button>
+<!-- v1.19.2 长页面「回到顶部」浮动按钮（滚过一屏才出现） -->
+<button id="fab-top" type="button" hidden>↑<br>顶部</button>
 <div id="modal-feedback" hidden>
   <div class="fb-card">
     <div class="fb-head">🐞 告诉我有什么可以改善</div>
@@ -340,6 +348,12 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   background:#fff;color:var(--crimson);border-radius:14px;padding:8px 12px;font-size:13px;
   font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(194,15,8,.18)}
 #fab-feedback:hover{background:var(--crimson);color:#fff}
+#fab-top{position:fixed;left:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));
+  z-index:900;border:2px solid var(--crimson);background:#fff;color:var(--crimson);
+  border-radius:14px;padding:8px 12px;font-size:13px;font-weight:800;cursor:pointer;
+  box-shadow:0 4px 14px rgba(194,15,8,.18);line-height:1.25;text-align:center}
+#fab-top:hover{background:var(--crimson);color:#fff}
+#fab-top[hidden]{display:none}
 #modal-feedback{position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.45);
   display:flex;align-items:center;justify-content:center;padding:16px}
 .fb-card{background:#fff;border-radius:14px;max-width:520px;width:100%;padding:20px}
@@ -406,7 +420,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.1</footer>
+  <footer>自由未来 FreeFuture · v1.19.2</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -2993,8 +3007,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.1";
+const VERSION = "v1.19.2";
 const CHANGELOG = [
+  { v: "v1.19.2", t: "2026-10-09", n: "📱 手机/平板交互优化：① 修好打码页「offer 图上没法滑动」——浏览模式下手指在图上可正常滚动/缩放（原来把触摸手势全吃掉，只能抠图外的窄边），只有笔刷模式下才锁定触摸；② 手机左右留白加宽到 18px 给手指留落点，底部避开 iPhone Home 条/刘海安全区；③ iOS/iPadOS 聚焦表单不再自动放大页面（输入框统一 16px）；④ 去掉会盖住输入框的悬浮按钮条，改为左下角「↑ 顶部」浮动按钮，长页面一键回顶" },
   { v: "v1.19.1", t: "2026-10-09", n: "🏫 学生信息页本科/硕士院校下拉新增「其他（请填写）」：选中即展开手写输入框，手动填院校名，拼进正文『学生概括』（原 5 个固定档仍保留）。同步加固公众号推送：录取捷报图除作封面外，正文首图补 data-src 属性并强制 https，确保草稿里图片稳定显示（图片→贴图、标题→标题、正文→正文草稿）" },
   { v: "v1.19.0", t: "2026-10-09", n: "📤 结果页「传公众号草稿」按钮移到预览图正下方，点击后先开「学生信息页」让同事勾选：同学代号（代入正文 X同学）、本科/硕士院校下拉（世界前100/前200/985/211/双非）+专业+GPA、无硕士勾选、科研/发表/竞赛/实习/奖学金（填0自动不显示）、其他优势（选填）。「完成填写后生成草稿」按以上拼进正文『学生概括』段；「跳过下一页」走原默认草稿。标题自动变「校名+专业+1！」格式。网页背景整体改为白色" },
   { v: "v1.16.0", t: "2026-10-07", n: "🤖 安卓也能存到相册了：安卓设备（含微信内置浏览器）点【存到相册】调起系统分享面板选「保存到图库 / 相册」；不支持分享的走长摁图片浮层。原来安卓 <a download> 被微信拦截成「在浏览器打开此网页来下载文件」，所以下不了图——移动端（iOS+安卓）现在统一走分享/浮层存相册路径，桌面端仍是「下载到本机」" },
@@ -3090,6 +3105,7 @@ async function boot() {
   initResult();
   initChangelog();
   initFeedback();
+  initTopBtn();
   renderVersionArea();
   const fv = $("#footer-ver");
   if (fv) fv.textContent = VERSION;
@@ -5519,6 +5535,20 @@ function initChangelog() {
   $("#changelog-list").innerHTML = CHANGELOG.map(c =>
     `<div class="cl-item"><span class="cl-v">${c.v}</span><span class="cl-t">${c.t}</span><div class="cl-n">${c.n}</div></div>`
   ).join("");
+}
+
+/* ---------- 长页面「回到顶部」浮动按钮（v1.19.2） ---------- */
+function initTopBtn() {
+  const btn = document.getElementById("fab-top");
+  if (!btn) return;
+  const sync = () => { btn.hidden = (window.scrollY || document.documentElement.scrollTop || 0) < 360; };
+  window.addEventListener("scroll", sync, { passive: true });
+  btn.addEventListener("click", () => {
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); }
+    catch (e) { window.scrollTo(0, 0); }   // 老 WebView 不认 options
+    sync();
+  });
+  sync();
 }
 
 /* ---------- Bug 反馈（图片粘贴 + .eml 打包） ---------- */
