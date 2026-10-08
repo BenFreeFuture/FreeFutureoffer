@@ -266,7 +266,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.3</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.4</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -354,6 +354,12 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   box-shadow:0 4px 14px rgba(194,15,8,.18);line-height:1.25;text-align:center}
 #fab-top:hover{background:var(--crimson);color:#fff}
 #fab-top[hidden]{display:none}
+/* v1.19.4 🔴 iOS/安卓 键盘弹起时，fixed 悬浮按钮会被顶到键盘正上方，
+   正好压住表单下半部分 —— 手指点「段科研」等输入框会被它抢走点击
+   （点中「↑ 顶部」还会整页跳回最上面），表现为「输的内容跑进了上一个框」。
+   所以：学生信息页整页不显示这两个按钮；任何页面只要有输入框获得焦点也隐藏。 */
+body.kb-open #fab-top, body.kb-open #fab-feedback,
+body.stu-open #fab-top, body.stu-open #fab-feedback{display:none!important}
 #modal-feedback{position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.45);
   display:flex;align-items:center;justify-content:center;padding:16px}
 .fb-card{background:#fff;border-radius:14px;max-width:520px;width:100%;padding:20px}
@@ -420,7 +426,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.3</footer>
+  <footer>自由未来 FreeFuture · v1.19.4</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -478,11 +484,13 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
 
     <div class="stu-sub">软实力（填 0 则该行不显示）</div>
     <div class="stu-row2">
-      <div class="stu-num"><label>段科研</label><input id="stu-research" type="number" min="0" value="0"></div>
-      <div class="stu-num"><label>段发表</label><input id="stu-publish" type="number" min="0" value="0"></div>
-      <div class="stu-num"><label>个竞赛奖项</label><input id="stu-award" type="number" min="0" value="0"></div>
-      <div class="stu-num"><label>段实习</label><input id="stu-intern" type="number" min="0" value="0"></div>
-      <div class="stu-num"><label>个奖学金</label><input id="stu-scholarship" type="number" min="0" value="0"></div>
+      <!-- v1.19.4：用 type=text + inputmode=numeric（iOS 仍出数字键盘，但避开 number 类型的怪异行为），
+           点进去自动全选默认的 0 —— 直接打数字就替换，不用先删 0；标签加 for，点「段科研」文字也能进框 -->
+      <div class="stu-num"><label for="stu-research">段科研</label><input id="stu-research" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="0" onfocus="this.select()"></div>
+      <div class="stu-num"><label for="stu-publish">段发表</label><input id="stu-publish" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="0" onfocus="this.select()"></div>
+      <div class="stu-num"><label for="stu-award">个竞赛奖项</label><input id="stu-award" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="0" onfocus="this.select()"></div>
+      <div class="stu-num"><label for="stu-intern">段实习</label><input id="stu-intern" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="0" onfocus="this.select()"></div>
+      <div class="stu-num"><label for="stu-scholarship">个奖学金</label><input id="stu-scholarship" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="0" onfocus="this.select()"></div>
     </div>
 
     <div class="field">
@@ -3009,8 +3017,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.3";
+const VERSION = "v1.19.4";
 const CHANGELOG = [
+  { v: "v1.19.4", t: "2026-10-09", n: "🐞 修「手机键盘弹起时点软实力数字框，字却跑进上面那个框」：键盘弹起后，左下「↑ 顶部」和右下「反馈」这两个悬浮按钮会被顶到键盘正上方，正好盖住表单下半部分、把手指的点击抢走（点中「↑ 顶部」还会把整页弹回最上面），于是字就落进了仍保持焦点的「同学名字」框——现在学生信息页整页不显示这两个悬浮按钮，其它页面只要有输入框获得焦点（＝键盘弹起）也自动隐藏；② 软实力 5 个数字框改用数字键盘、点进去自动全选默认的 0（直接打数字即替换，不用先删 0），标签也能点（点「段科研」三个字同样进输入框），并自动过滤非数字字符；③ 公众号「贴图」草稿的正文换行不再丢失（贴图正文只认纯文本，之前把换行吞了），封面固定按「录取捷报最上方」裁切，不再默认裁中间把校名标题裁掉" },
   { v: "v1.19.3", t: "2026-10-09", n: "① 勾了「没有硕士教育背景」后，正文不再出现「硕士：没有硕士教育背景」这一行——本科直申本来就没硕士背景，整行删掉；② 传输页「下载 .md」改为「📄 下载 md 格式」：点击既存一份到本机，也同步存进企业微信（优先建「在线文档」，文档接口未授权则自动退回微盘「录取捷报/公众号md」）；③ 公众号草稿改为创建【贴图】（图片消息）类型——「新的创作 → 贴图 → 保存草稿」，若贴图接口不可用会自动回退为文章草稿并在页面上明确提示" },
   { v: "v1.19.2", t: "2026-10-09", n: "📱 手机/平板交互优化：① 修好打码页「offer 图上没法滑动」——浏览模式下手指在图上可正常滚动/缩放（原来把触摸手势全吃掉，只能抠图外的窄边），只有笔刷模式下才锁定触摸；② 手机左右留白加宽到 18px 给手指留落点，底部避开 iPhone Home 条/刘海安全区；③ iOS/iPadOS 聚焦表单不再自动放大页面（输入框统一 16px）；④ 去掉会盖住输入框的悬浮按钮条，改为左下角「↑ 顶部」浮动按钮，长页面一键回顶" },
   { v: "v1.19.1", t: "2026-10-09", n: "🏫 学生信息页本科/硕士院校下拉新增「其他（请填写）」：选中即展开手写输入框，手动填院校名，拼进正文『学生概括』（原 5 个固定档仍保留）。同步加固公众号推送：录取捷报图除作封面外，正文首图补 data-src 属性并强制 https，确保草稿里图片稳定显示（图片→贴图、标题→标题、正文→正文草稿）" },
@@ -3083,8 +3092,28 @@ const $ = sel => document.querySelector(sel);
 const $$ = sel => [...document.querySelectorAll(sel)];
 const showPage = id => {
   $$(".page").forEach(p => p.classList.toggle("active", p.id === id));
+  /* v1.19.4：学生信息页是纯表单页，整页不显示 fixed 悬浮按钮（详见 shell.html 的 kb-open 规则） */
+  document.body.classList.toggle("stu-open", id === "page-student");
   window.scrollTo(0, 0);
 };
+
+/* ---------- 键盘守卫（v1.19.4）----------
+   iOS/安卓 键盘弹起时 fixed 悬浮按钮会被顶到键盘正上方，正好压住表单控件、
+   把手指的点击抢走（点中「↑ 顶部」还会把整页弹回最上面，用户看到的现象就是
+   「在下面的输入框里打字，字却跑进了上面那个仍然保持焦点的框」）。
+   这里用「有输入类控件获得焦点」当作键盘弹起的信号，一律隐藏这两个按钮。 */
+function initKeyboardGuard() {
+  const isField = el => !!el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
+  document.addEventListener("focusin", e => {
+    if (isField(e.target)) document.body.classList.add("kb-open");
+  });
+  document.addEventListener("focusout", () => {
+    // 焦点在控件之间切换时会先 focusout 再 focusin，延迟一拍再判断，避免闪隐
+    setTimeout(() => {
+      if (!isField(document.activeElement)) document.body.classList.remove("kb-open");
+    }, 80);
+  });
+}
 
 
 /* 全局错误收集（随 Bug 反馈一并打包） */
@@ -3109,6 +3138,7 @@ async function boot() {
   initChangelog();
   initFeedback();
   initTopBtn();
+  initKeyboardGuard();
   renderVersionArea();
   const fv = $("#footer-ver");
   if (fv) fv.textContent = VERSION;
@@ -5266,6 +5296,9 @@ function goWechatDraft() {
   fillWechatDraft();
 }
 
+/* 只留数字：数字框改成 type=text 后，输入法仍可能带进非数字字符，读表时统一清洗 */
+const numOnly = v => String(v == null ? "" : v).replace(/[^0-9]/g, "");
+
 /* 读取学生信息页表单 */
 function readStudentFromForm() {
   let ugSchool = $("#stu-ug-school").value;
@@ -5281,11 +5314,11 @@ function readStudentFromForm() {
     pgSchool: pgSchool,
     pgMajor: $("#stu-pg-major").value.trim(),
     pgGpa: $("#stu-pg-gpa").value,
-    research: $("#stu-research").value.trim(),
-    publish: $("#stu-publish").value.trim(),
-    award: $("#stu-award").value.trim(),
-    intern: $("#stu-intern").value.trim(),
-    scholarship: $("#stu-scholarship").value.trim(),
+    research: numOnly($("#stu-research").value),
+    publish: numOnly($("#stu-publish").value),
+    award: numOnly($("#stu-award").value),
+    intern: numOnly($("#stu-intern").value),
+    scholarship: numOnly($("#stu-scholarship").value),
     other: $("#stu-other").value.trim(),
   };
 }
