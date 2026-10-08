@@ -199,6 +199,9 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
 .stu-num input:focus{outline:none;border-color:var(--cream);
   box-shadow:0 0 0 3px rgba(246,211,161,.3)}
 .stu-pg-disabled{opacity:.4;pointer-events:none}
+.stu-other{width:100%;margin:8px 0 0;border:1.5px solid var(--line);border-radius:10px;
+  padding:10px 14px;font-size:15px;font-family:inherit;background:#fff;color:var(--ink)}
+.stu-other[hidden]{display:none}
 @media (max-width:767px){
   .stu-row{grid-template-columns:1fr}
   .stu-row2{grid-template-columns:repeat(2,1fr)}
@@ -257,7 +260,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.0</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.1</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -403,7 +406,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.0</footer>
+  <footer>自由未来 FreeFuture · v1.19.1</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -420,13 +423,14 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
 
     <div class="stu-sub">本科背景</div>
     <div class="stu-row">
-      <select id="stu-ug-school" class="stu-select">
+      <select id="stu-ug-school" class="stu-select" onchange="onStuOther(this,'stu-ug-school-other')">
         <option value="">— 本科院校 —</option>
         <option>世界前100院校</option>
         <option>世界前200院校</option>
         <option>985工程院校</option>
         <option>中国211工程院校</option>
         <option>双非院校</option>
+        <option value="其他">其他（请填写）</option>
       </select>
       <input id="stu-ug-major" class="stu-input" placeholder="专业名称">
       <select id="stu-ug-gpa" class="stu-select">
@@ -435,17 +439,19 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
         <option>中等偏上</option><option>中游</option><option>较低</option>
       </select>
     </div>
+    <input id="stu-ug-school-other" class="stu-other" hidden placeholder="请填写本科院校名称">
 
     <div class="stu-sub">硕士背景</div>
     <label class="chk"><input type="checkbox" id="stu-no-master"> 没有硕士教育背景</label>
     <div class="stu-row" id="stu-pg-row">
-      <select id="stu-pg-school" class="stu-select">
+      <select id="stu-pg-school" class="stu-select" onchange="onStuOther(this,'stu-pg-school-other')">
         <option value="">— 硕士院校 —</option>
         <option>世界前100院校</option>
         <option>世界前200院校</option>
         <option>985工程院校</option>
         <option>中国211工程院校</option>
         <option>双非院校</option>
+        <option value="其他">其他（请填写）</option>
       </select>
       <input id="stu-pg-major" class="stu-input" placeholder="专业名称">
       <select id="stu-pg-gpa" class="stu-select">
@@ -454,6 +460,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
         <option>中等偏上</option><option>中游</option><option>较低</option>
       </select>
     </div>
+    <input id="stu-pg-school-other" class="stu-other" hidden placeholder="请填写硕士院校名称">
 
     <div class="stu-sub">软实力（填 0 则该行不显示）</div>
     <div class="stu-row2">
@@ -2986,8 +2993,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.0";
+const VERSION = "v1.19.1";
 const CHANGELOG = [
+  { v: "v1.19.1", t: "2026-10-09", n: "🏫 学生信息页本科/硕士院校下拉新增「其他（请填写）」：选中即展开手写输入框，手动填院校名，拼进正文『学生概括』（原 5 个固定档仍保留）。同步加固公众号推送：录取捷报图除作封面外，正文首图补 data-src 属性并强制 https，确保草稿里图片稳定显示（图片→贴图、标题→标题、正文→正文草稿）" },
   { v: "v1.19.0", t: "2026-10-09", n: "📤 结果页「传公众号草稿」按钮移到预览图正下方，点击后先开「学生信息页」让同事勾选：同学代号（代入正文 X同学）、本科/硕士院校下拉（世界前100/前200/985/211/双非）+专业+GPA、无硕士勾选、科研/发表/竞赛/实习/奖学金（填0自动不显示）、其他优势（选填）。「完成填写后生成草稿」按以上拼进正文『学生概括』段；「跳过下一页」走原默认草稿。标题自动变「校名+专业+1！」格式。网页背景整体改为白色" },
   { v: "v1.16.0", t: "2026-10-07", n: "🤖 安卓也能存到相册了：安卓设备（含微信内置浏览器）点【存到相册】调起系统分享面板选「保存到图库 / 相册」；不支持分享的走长摁图片浮层。原来安卓 <a download> 被微信拦截成「在浏览器打开此网页来下载文件」，所以下不了图——移动端（iOS+安卓）现在统一走分享/浮层存相册路径，桌面端仍是「下载到本机」" },
   { v: "v1.15.0", t: "2026-10-07", n: "📲 iPhone 能存相册了：苹果手机上点【保存到相册】调起系统分享面板，选「存储图像」即存入照片；不支持分享的浏览器（微信等）自动弹出图片浮层，长摁图片也能存。原来 iOS 不认「下载」按钮、画布又长摁不了，所以存不进相册——现已修好" },
@@ -4849,6 +4857,10 @@ function initResult() {
   $("#btn-stu-skip").addEventListener("click", skipToWechatDraft);
   $("#stu-no-master").addEventListener("change", e => {
     $("#stu-pg-row").classList.toggle("stu-pg-disabled", e.target.checked);
+    if (e.target.checked) {
+      const o = $("#stu-pg-school-other");
+      o.hidden = true; o.value = "";
+    }
   });
   /* 原始素材：下载原图 / 原图归档微盘 / 改名 */
   $("#btn-download-orig").addEventListener("click", downloadOriginal);
@@ -5237,13 +5249,17 @@ function goWechatDraft() {
 
 /* 读取学生信息页表单 */
 function readStudentFromForm() {
+  let ugSchool = $("#stu-ug-school").value;
+  if (ugSchool === "其他") ugSchool = ($("#stu-ug-school-other").value || "").trim() || "其他";
+  let pgSchool = $("#stu-pg-school").value;
+  if (pgSchool === "其他") pgSchool = ($("#stu-pg-school-other").value || "").trim() || "其他";
   return {
     code: ($("#stu-code").value || "X").trim() || "X",
-    ugSchool: $("#stu-ug-school").value,
+    ugSchool: ugSchool,
     ugMajor: $("#stu-ug-major").value.trim(),
     ugGpa: $("#stu-ug-gpa").value,
     noMaster: $("#stu-no-master").checked,
-    pgSchool: $("#stu-pg-school").value,
+    pgSchool: pgSchool,
     pgMajor: $("#stu-pg-major").value.trim(),
     pgGpa: $("#stu-pg-gpa").value,
     research: $("#stu-research").value.trim(),
@@ -5253,6 +5269,14 @@ function readStudentFromForm() {
     scholarship: $("#stu-scholarship").value.trim(),
     other: $("#stu-other").value.trim(),
   };
+}
+
+/* 院校下拉选「其他」→ 显示手写输入框 */
+function onStuOther(sel, otherId) {
+  const inp = document.getElementById(otherId);
+  if (!inp) return;
+  if (sel.value === "其他") { inp.hidden = false; inp.focus(); }
+  else { inp.hidden = true; inp.value = ""; }
 }
 
 /* 拼「学生概括」段（数值为 0 的行、空的「其他优势」行自动删除） */
