@@ -83,9 +83,12 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
 .lang-switch button.on{background:var(--crimson);color:#fff}
 .field{margin-bottom:12px}
 .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
-.field input{width:100%;border:1.5px solid var(--line);border-radius:10px;
+.field input,.field select{width:100%;border:1.5px solid var(--line);border-radius:10px;
   padding:11px 14px;font-size:16px;font-family:inherit;background:#FFFFFF}
-.field input:focus{outline:none;border-color:var(--cream);
+.field select{-webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23888' stroke-width='1.8'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+.field input:focus,.field select:focus{outline:none;border-color:var(--cream);
   box-shadow:0 0 0 3px rgba(246,211,161,.3)}
 #f-hint{font-size:12.5px;color:var(--muted);margin-top:8px}
 #univ-guess,#major-guess{font-size:12.5px;line-height:1.55;color:#8A5A18;background:#FDF3E3;
@@ -163,7 +166,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   .preview{height:auto;min-height:0;max-height:none;padding:0}
   #result-canvas{width:100%;height:auto;max-height:none;border-radius:8px;box-shadow:none}
   .act-btn{padding:15px;font-size:16px;min-height:48px}
-  .field input{min-height:48px}
+  .field input,.field select{min-height:48px}
   .chk input{width:24px;height:24px}
 }
 
@@ -266,7 +269,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.6</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.7</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -300,6 +303,8 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
         <button id="lang-en" type="button">English</button>
       </div>
       <div class="field"><label>大学名称</label><input id="f-univ"></div>
+      <!-- v1.19.7：校名前国旗下拉（默认「自动」＝按手敲校名推断，可强制指定/去掉） -->
+      <div class="field"><label>校名前国旗</label><select id="f-flag"></select></div>
       <div class="field"><label>专业名称</label><input id="f-major"></div>
       <div class="field"><label>学位名称</label><input id="f-degree"></div>
       <div class="field"><label>附加信息</label><input id="f-extra" placeholder="如：可衔接博士"></div>
@@ -426,7 +431,7 @@ body.stu-open #fab-top, body.stu-open #fab-feedback{display:none!important}
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.6</footer>
+  <footer>自由未来 FreeFuture · v1.19.7</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -3159,8 +3164,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.6";
+const VERSION = "v1.19.7";
 const CHANGELOG = [
+  { v: "v1.19.7", t: "2026-10-20", n: "① 修「传公众号草稿预填的院校介绍对不上手敲校名」：原来 generate() 只读表单不回写 App.fields，预填查字典时读的是 OCR 初值（例：手敲「香港岭南大学」，字典却按 OCR 认错的「香港大学」套了港大介绍与排名）；现在生成前先把手敲值写回 App.fields，并新增「多候选按优先级查字典」——海报定稿手敲名 > 表单当前值 > 中文栏 > 英文栏 > OCR 结果，英文校名自动转中文再查；标题校名与命中条目不一致时在提示条上明确警告，不再静默套错介绍。顺带修中英切换丢改动（切语言前先把当前语言的手敲值收进 App.fields）；② 打码页「大学名称」下新增「校名前国旗」下拉：默认「自动（按手敲校名推断，选项上直接显示推断结果）」，可选具体国家/地区或「不加国旗」，直接决定生成页冠名区校名前的国旗；flagFromCn 改为先查大学指纹库（UNIV_FP，岭南大学/Lingnan University 等直接命中），再退回名称表与地区关键词，并过滤指纹表里混着的缩写串（HGSE 之类）误当旗子；国旗仅在中文冠名区生效，英文模式自动隐藏该行" },
   { v: "v1.19.6", t: "2026-10-20", n: "① 学校介绍字典从 194 所扩充到 336 所（+142 所）：补齐香港 4 校、澳门 10 校、新加坡 12 校、英澳加 11 校、美国全球 24 校、美国全美 44 校、中外合作办学 37 校；排名按规则填充（非美校仅 QS、美校取 QS2027 与 US News2027 较小值、无本地数据则省略不编造），英文名（en）全量补全（指纹表 UNIV_FP 283 对反查 + 107 所内置映射，零缺失），中外合作办学项借用母体校排名并标注母体校；② 修复「带括号校名查不到学校介绍」的 bug：lookupSchool 原逻辑先剥括号再查表，导致香港中文大学（深圳）、香港科技大学（广州）、西交利物浦大学等带括号校名永远命中失败，改为先按含括号全称精确匹配；③ 东北大学撞名隔离：波士顿 Northeastern University 改用「东北大学（美国）」键，与字典原有仙台 Tohoku（东北大学）双键独立并存、互不覆盖；注：v1.19.5 预留给「公众号贴图封面左右被裁」议题（微信 API 硬限制，待拍板），本次未占用" },
   { v: "v1.19.4", t: "2026-10-09", n: "🐞 修「手机键盘弹起时点软实力数字框，字却跑进上面那个框」：键盘弹起后，左下「↑ 顶部」和右下「反馈」这两个悬浮按钮会被顶到键盘正上方，正好盖住表单下半部分、把手指的点击抢走（点中「↑ 顶部」还会把整页弹回最上面），于是字就落进了仍保持焦点的「同学名字」框——现在学生信息页整页不显示这两个悬浮按钮，其它页面只要有输入框获得焦点（＝键盘弹起）也自动隐藏；② 软实力 5 个数字框改用数字键盘、点进去自动全选默认的 0（直接打数字即替换，不用先删 0），标签也能点（点「段科研」三个字同样进输入框），并自动过滤非数字字符；③ 公众号「贴图」草稿的正文换行不再丢失（贴图正文只认纯文本，之前把换行吞了），封面固定按「录取捷报最上方」裁切，不再默认裁中间把校名标题裁掉" },
   { v: "v1.19.3", t: "2026-10-09", n: "① 勾了「没有硕士教育背景」后，正文不再出现「硕士：没有硕士教育背景」这一行——本科直申本来就没硕士背景，整行删掉；② 传输页「下载 .md」改为「📄 下载 md 格式」：点击既存一份到本机，也同步存进企业微信（优先建「在线文档」，文档接口未授权则自动退回微盘「录取捷报/公众号md」）；③ 公众号草稿改为创建【贴图】（图片消息）类型——「新的创作 → 贴图 → 保存草稿」，若贴图接口不可用会自动回退为文章草稿并在页面上明确提示" },
@@ -4308,15 +4314,47 @@ function mapUnivCn(en) {
   if (abs.length === 1) return { cn: abs[0][1], flag: abs[0][2] };
   return { cn: "", flag: "" };
 }
-/* 中文校名反查国旗（手填场景） */
-function flagFromCn(cn) {
-  if (!cn) return "";
-  for (const [re, , flag] of UNIV_MAP) if (re.test(cn)) return flag;
-  if (/香港|港大|中大|科大|理大|城大|浸会|教大/.test(cn)) return "🇭🇰";
-  if (/澳门/.test(cn)) return "🇲🇴";
-  if (/新加坡/.test(cn)) return "🇸🇬";
-  if (/英国|伦敦|牛津|剑桥|帝国|爱丁堡|曼彻斯特/.test(cn)) return "🇬🇧";
-  if (/美国|伊利诺伊|伯克利|加州/.test(cn)) return "🇺🇸";
+/* 国旗 emoji 合法性判定：UNIV_FP 里混着缩写数组，别把 "HGSE" 当成旗子 */
+function isFlagEmoji(s) {
+  return typeof s === "string" && /^[\u{1F1E6}-\u{1F1FF}]{2}$/u.test(s);
+}
+/* 手填校名 → 国旗（v1.19.7：先查指纹库，再退回名称表/地区关键词） */
+function flagFromCn(name) {
+  if (!name) return "";
+  const s = String(name).trim();
+  if (!s) return "";
+  const low = s.toLowerCase();
+  /* ① 指纹库精确：中文名 / 英文名全等（岭南大学 / Lingnan University → 🇭🇰） */
+  for (const row of UNIV_FP) {
+    if (!isFlagEmoji(row[2])) continue;
+    if (row[1] === s || String(row[0]).toLowerCase() === low) return row[2];
+  }
+  /* ② 指纹库包含：手填名里含某校全称（「香港岭南大学」含「岭南大学」）→ 取最长命中 */
+  let bestFlag = "", bestLen = 0;
+  for (const row of UNIV_FP) {
+    if (!isFlagEmoji(row[2])) continue;
+    const cn = row[1];
+    if (cn && s.includes(cn) && cn.length > bestLen) { bestFlag = row[2]; bestLen = cn.length; }
+  }
+  if (bestFlag) return bestFlag;
+  /* ③ 名称映射表（含英文别名正则） */
+  for (const [re, , flag] of UNIV_MAP) if (isFlagEmoji(flag) && re.test(s)) return flag;
+  /* ④ 地区关键词兜底 */
+  if (/香港|港大|科大|理大|城大|浸会|教大|岭南/.test(s)) return "🇭🇰";
+  if (/澳门/.test(s)) return "🇲🇴";
+  if (/新加坡|南洋理工/.test(s)) return "🇸🇬";
+  if (/英国|伦敦|牛津|剑桥|帝国理工|爱丁堡|曼彻斯特|华威|格拉斯哥|杜伦|布里斯托/.test(s)) return "🇬🇧";
+  if (/美国|伊利诺伊|伯克利|加州|纽约|波士顿|芝加哥/.test(s)) return "🇺🇸";
+  if (/澳大利亚|澳洲|悉尼|墨尔本|昆士兰|新南威尔士|莫纳什|阿德莱德/.test(s)) return "🇦🇺";
+  if (/加拿大|多伦多|麦吉尔|英属哥伦比亚|滑铁卢|阿尔伯塔/.test(s)) return "🇨🇦";
+  if (/新西兰|奥克兰|惠灵顿/.test(s)) return "🇳🇿";
+  if (/日本|东京|京都|大阪|早稻田|庆应/.test(s)) return "🇯🇵";
+  if (/韩国|首尔|延世|高丽|成均馆/.test(s)) return "🇰🇷";
+  if (/德国|慕尼黑|海德堡|柏林|亚琛/.test(s)) return "🇩🇪";
+  if (/荷兰|代尔夫特|阿姆斯特丹|莱顿|乌得勒支|鹿特丹/.test(s)) return "🇳🇱";
+  if (/法国|巴黎|索邦|里昂/.test(s)) return "🇫🇷";
+  if (/瑞士|苏黎世|洛桑|日内瓦/.test(s)) return "🇨🇭";
+  if (/爱尔兰|都柏林|圣三一/.test(s)) return "🇮🇪";
   return "";
 }
 const MAJOR_MAP = [
@@ -4939,10 +4977,101 @@ function repaintProcessed() {
   FreePoster.drawWatermark(ctx, App.processed.width, App.processed.height);
 }
 
+/* ---------- 校名前国旗（v1.19.7） ---------- */
+/* 选项 value：emoji 本身 / "none"（不要国旗）/ "auto"（按手敲校名自动推断） */
+const FLAG_OPTS = [
+  ["none", "🚫 不加国旗"],
+  ["🇭🇰", "🇭🇰 中国香港"],
+  ["🇲🇴", "🇲🇴 中国澳门"],
+  ["🇨🇳", "🇨🇳 中国内地"],
+  ["🇸🇬", "🇸🇬 新加坡"],
+  ["🇬🇧", "🇬🇧 英国"],
+  ["🇺🇸", "🇺🇸 美国"],
+  ["🇦🇺", "🇦🇺 澳大利亚"],
+  ["🇨🇦", "🇨🇦 加拿大"],
+  ["🇳🇿", "🇳🇿 新西兰"],
+  ["🇯🇵", "🇯🇵 日本"],
+  ["🇰🇷", "🇰🇷 韩国"],
+  ["🇩🇪", "🇩🇪 德国"],
+  ["🇳🇱", "🇳🇱 荷兰"],
+  ["🇫🇷", "🇫🇷 法国"],
+  ["🇨🇭", "🇨🇭 瑞士"],
+  ["🇮🇪", "🇮🇪 爱尔兰"],
+  ["🇸🇪", "🇸🇪 瑞典"],
+  ["🇩🇰", "🇩🇰 丹麦"],
+  ["🇳🇴", "🇳🇴 挪威"],
+  ["🇫🇮", "🇫🇮 芬兰"],
+  ["🇧🇪", "🇧🇪 比利时"],
+  ["🇮🇹", "🇮🇹 意大利"],
+  ["🇪🇸", "🇪🇸 西班牙"],
+  ["🇦🇹", "🇦🇹 奥地利"],
+  ["🇲🇾", "🇲🇾 马来西亚"],
+  ["🇹🇭", "🇹🇭 泰国"],
+  ["🇦🇪", "🇦🇪 阿联酋"],
+];
+const FLAG_NAME = {};                    // emoji -> 国家/地区中文名
+for (const [v, label] of FLAG_OPTS) if (v !== "none") FLAG_NAME[v] = label.slice(v.length).trim();
+
+/* 当前手敲的校名（中文优先：字典与国旗库都以中文名为准） */
+function currentUnivCn() {
+  const live = ($("#f-univ") && $("#f-univ").value.trim()) || "";
+  const cn = (App.fields.cn && App.fields.cn.univ) || "";
+  return App.fields.lang === "cn" ? (live || cn) : (cn || live);
+}
+
+/* 把推断结果直接摊在「自动」选项上，不用让人猜 */
+function refreshFlagLabel() {
+  const sel = $("#f-flag");
+  if (!sel) return;
+  const autoOpt = sel.querySelector('option[value="auto"]');
+  if (!autoOpt) return;
+  const g = flagFromCn(currentUnivCn());
+  autoOpt.textContent = "自动（" + (g ? g + " " + (FLAG_NAME[g] || "") : "未识别，请手动选") + "）";
+}
+
+function renderFlagSelect() {
+  const sel = $("#f-flag");
+  if (!sel) return;
+  if (!sel.dataset.ready) {
+    const mk = (v, label) => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = label; return o;
+    };
+    sel.appendChild(mk("auto", "自动"));
+    for (const [v, label] of FLAG_OPTS) sel.appendChild(mk(v, label));
+    sel.dataset.ready = "1";
+    sel.addEventListener("change", () => { App.flagMode = sel.value; });
+  }
+  sel.value = App.flagMode || "auto";
+  refreshFlagLabel();
+}
+
+/* 最终生效的国旗：手动指定 > 按手敲校名推断 > OCR 指纹兜底 */
+function resolveFlag() {
+  const mode = App.flagMode || "auto";
+  if (mode === "none") return "";
+  if (mode !== "auto") return mode;
+  return flagFromCn(currentUnivCn()) || App.fields.flag || "";
+}
+
+/* 把手敲的四个框收进 App.fields（生成前 / 切语言前必须调，否则改动不入库） */
+function captureFields() {
+  const f = App.fields[App.fields.lang];
+  if (!f) return;
+  const map = [["univ", "f-univ"], ["major", "f-major"], ["degree", "f-degree"], ["extra", "f-extra"]];
+  for (const [k, id] of map) {
+    const el = $("#" + id);
+    if (el) f[k] = el.value.trim();
+  }
+}
+
 /* ---------- 页面 2：确认 ---------- */
 function initConfirm() {
-  $("#lang-cn").addEventListener("click", () => { App.fields.lang = "cn"; renderFields(); });
-  $("#lang-en").addEventListener("click", () => { App.fields.lang = "en"; renderFields(); });
+  /* v1.19.7：切语言前先把手敲值收进 App.fields，避免中英切换把改动丢掉 */
+  $("#lang-cn").addEventListener("click", () => { captureFields(); App.fields.lang = "cn"; renderFields(); });
+  $("#lang-en").addEventListener("click", () => { captureFields(); App.fields.lang = "en"; renderFields(); });
+  const univIn = $("#f-univ");
+  if (univIn) univIn.addEventListener("input", refreshFlagLabel);   // 手敲校名 → 自动国旗实时跟着变
   $("#scholarship").addEventListener("change", e => {
     App.fields.scholarship = e.target.checked;
   });
@@ -4980,6 +5109,11 @@ function renderFields() {
     mg.textContent = show ? (lang === "cn" ? g.cn : g.en) : "";
     mg.hidden = !show;
   }
+  /* 国旗只在中文冠名区生效 → 英文模式隐藏该行，免得误以为能控英文海报 */
+  renderFlagSelect();
+  const flagSel = $("#f-flag");
+  const flagRow = flagSel && flagSel.closest(".field");
+  if (flagRow) flagRow.style.display = lang === "cn" ? "" : "none";
   $("#f-hint").textContent = lang === "cn"
     ? "专业+学位 ≤10 字自动合并一行；字号/断行/居中自动处理，你只管文字对错"
     : "Word-wrap & font size are automatic. English lines: max 6.";
@@ -4988,16 +5122,22 @@ function renderFields() {
 /* 收集表单 -> 冠名行 -> 渲染整图 */
 async function generate() {
   const lang = App.fields.lang;
+  /* v1.19.7：手敲值先写回 App.fields —— 原来只读不写，导致后面「传公众号」
+     查字典用的一直是 OCR 初值（例：手敲「香港岭南大学」，字典却按「香港大学」预填） */
+  captureFields();
   const f = App.fields[lang];
   const read = id => $("#" + id).value.trim();
   const src = lang === "cn"
     ? { univCn: read("f-univ"), majorCn: read("f-major"), degreeCn: read("f-degree"), extraCn: read("f-extra") }
     : { univEn: read("f-univ"), majorEn: read("f-major"), degreeEn: read("f-degree"), extraEn: read("f-extra") };
+  /* 海报定稿文字（含国旗）：后续「传公众号」以这份为准，OCR 猜测只作兜底 */
+  App.poster = {
+    univ: read("f-univ"), major: read("f-major"),
+    degree: read("f-degree"), extra: read("f-extra"),
+  };
   const nameLines = FreePoster.layoutName({
     ...App.fields, ...src, lang,
-    flag: App.fields.lang === "cn"
-      ? (App.fields.flag || flagFromCn(read("f-univ")) || "")
-      : "",
+    flag: lang === "cn" ? resolveFlag() : "",     // 下拉指定 > 手敲校名推断 > OCR 指纹
     scholarship: $("#scholarship").checked,
   });
 
@@ -5514,14 +5654,42 @@ function buildStudentBlock() {
   return lines.join("\n");
 }
 
+/* v1.19.7：查字典用的校名——手敲优先，OCR 只兜底。
+   早期 OCR 容易把校名认错，手敲才是唯一可信源，顺序即优先级。 */
+function schoolForDraft() {
+  const cands = [];
+  const push = v => {
+    const s = String(v || "").trim();
+    if (s && !cands.includes(s)) cands.push(s);
+  };
+  push(App.poster && App.poster.univ);                 // ① 生成海报时手敲的校名（最权威）
+  const live = $("#f-univ");
+  if (live) push(live.value);                          // ② 表单当前值
+  if (App.fields.cn) push(App.fields.cn.univ);         // ③ 中文栏手敲值
+  if (App.fields.en) push(App.fields.en.univ);         // ④ 英文栏
+  push(App.univGuess && App.univGuess.name);           // ⑤ OCR 识别结果（最后兜底）
+  /* 英文校名 → 中文名再试一次（字典键是中文，纯英文名会落空；
+     中文名不再反查，避免模糊匹配把候选搞脏） */
+  for (const c of cands.slice()) {
+    if (/[\u4e00-\u9fff]/.test(c)) continue;
+    const cn = mapUnivCn(c).cn;
+    if (cn) push(cn);
+  }
+  for (const c of cands) {
+    const s = lookupSchool(c);
+    if (s) return { name: c, school: s };
+  }
+  return { name: cands[0] || "", school: null };
+}
+
 /* 预填三框：标题=文件名核心；正文=恭喜段 + 院校介绍；摘要=自动生成 */
 function fillWechatDraft() {
   const core = coreFromName(App.resultName) || "录取捷报";
   const title = titleFromName(App.resultName);
   const code = (App.student && App.student.code) || "X";
-  const univRaw = (App.fields[App.fields.lang] && App.fields[App.fields.lang].univ)
-               || (App.univGuess && App.univGuess.name) || "";
-  const school = lookupSchool(univRaw);
+  const picked = schoolForDraft();
+  const univRaw = picked.name;
+  const school = picked.school;
 
   let content = "恭喜自由未来学生的" + code + "同学获得「" + core + "」的录取 💐";
   const stuBlock = buildStudentBlock();
@@ -5544,11 +5712,14 @@ function fillWechatDraft() {
   const meta = $("#wx-meta");
   if (meta) {
     if (school) {
-      meta.textContent = "已识别院校：" + school.name_cn +
-        (school.en ? "（" + school.en + "）" : "") + " · 院校介绍已从字典预填";
-      meta.className = "wx-meta ok";
+      /* 标题里的校名 ≠ 字典命中条目 → 明确警告，别让人拿着错院校介绍去发 */
+      const mismatch = school.name_cn && !title.includes(school.name_cn);
+      meta.textContent = (mismatch ? "⚠️ " : "已匹配字典：") + school.name_cn +
+        (school.en ? "（" + school.en + "）" : "") + " · 院校介绍已从字典预填" +
+        (mismatch ? "；但标题里的校名不含「" + school.name_cn + "」，请核对是不是同一所学校" : "");
+      meta.className = "wx-meta " + (mismatch ? "warn" : "ok");
     } else {
-      meta.textContent = "未匹配到学校介绍字典（院校名：" + (univRaw || "空") +
+      meta.textContent = "未匹配到学校介绍字典（校名：" + (univRaw || "空") +
         "）· 正文已留空待你补充";
       meta.className = "wx-meta warn";
     }
