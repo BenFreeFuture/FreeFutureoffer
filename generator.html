@@ -269,7 +269,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.11</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.12</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -431,7 +431,7 @@ body.stu-open #fab-top, body.stu-open #fab-feedback{display:none!important}
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.11</footer>
+  <footer>自由未来 FreeFuture · v1.19.12</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -3164,8 +3164,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.11";
+const VERSION = "v1.19.12";
 const CHANGELOG = [
+  { v: "v1.19.12", t: "2026-10-21", n: "v1.19.12 恢复 v1.3.0 定稿的校名多候选投票约束：锚点层旧实现按 UNIV_MAP 表序取第一个命中就返回，从未真正执行投票，导致岭南大学 offer（抬头 Lingnan 位于文首）被正文里学生母校 The Hang Seng University of Hong Kong 截出的 University of Hong Kong抢走。现改为收集全部命中 → 限定词前扩补全校名 → 安全阀过滤 → 按位置靠前与完整度投票。同步补香港恒生大学指纹，HKU 正则加否定后瞻。" },
   { v: "v1.19.11", t: "2026-10-21", n: "🔧 校名锚点防劫持系列修复（HKU offer 被填成澳门科技大学事故）：① extractByVote 词典锚点层加安全阀——命中片段必须含 University/College 等主体词或本身 ≥12 字符，普通单词（must be satisfied / further reading / fitness）不再能借上文拼装成伪校名；② UNIV_MAP 删除 60 余处「英文单词型」裸缩写分支（must/fit/reading/bath/rice/brown/duke/kent/essex/davis/york/um/lbs/bu/uw/mit 等），全名分支保留，缩写兜底改由大小写敏感的指纹库承担；③ 补 HKU 官方词序 University of Hong Kong（原正则只有 hong kong university 词序，永远匹配不到）；④ UNIV_FP 补澳门科技大学指纹（域名 must.edu.mo，不带 MUST 缩写）；⑤ mapUnivCn 改为命中文本最长者胜；⑥ resolveUnivName 对不像校名的 raw 增加全文关键词兜底；⑦ cnUnivScan 繁简归一（嶺南大學→岭南大学）。" },
   { v: "v1.19.10", t: "2026-10-21", n: "🔧 专业匹配排序修复：词典「猜」在得分平局时不再取最长条目，改为按覆盖率决胜（条目被输入解释的比例 → 输入被解释的比例 → 更短者）。修复 Master of Science in Family Office Management 被误配成 Human Development（人类发展与家庭研究）的问题，现正确落到 Family Studies（家庭研究）；同类收益：Quantitative Risk Analytics → 量化金融、MSc Finance → 金融学。同步修复专业字典 632 处变体中文吞字（@与工程 / @与研究 / @管理 / @人类与生物 等），以 2026-10-21 提供的中英对照全文回填 data/major_A~D.js，主条目 365 + 变体 851 全量配齐。" },
   { v: "v1.19.8", t: "2026-10-21", n: "① 修「连续上传多张 offer 时，某张 OCR 失败会继承上一张的校名/专业/学位」（根因：runOCR 的 catch 分支直接 afterOCR([]) 却没清空 App.ocrLines，prefillFields 于是用上一张的识别行去投票填字段，出现「传的是 A 校图、确认页却显示上一张 B 校」的错配，正是用户截图里『港校图填出波士顿大学』的成因）；现在 catch 首行强制清空 App.ocrLines 与各类 guess，OCR 失败时确认页是干净空表单、由用户手动填写，绝不再显示别的学校。② 本次仅修根因1；专业名『瞎猜』污染与专业字典补全另立 task，不混入本次发布" },
@@ -3626,6 +3627,53 @@ function extractByVote(rows, kind) {
 
   /* ===== 第一层：词典锚点（最可靠——认识的学校直接定位原文） ===== */
   const MAP = kind === "univ" ? UNIV_MAP : MAJOR_MAP;
+  /* v1.19.12：锚点层恢复「多候选投票」——2026-10-05 v1.3.0 用户定稿
+     「同一校名出现多次必须全部抓取+比对，取最合理最完整的，绝不信第一个」。
+     旧实现按 UNIV_MAP 表序取第一个命中就 return：岭南 offer 抬头 "Lingnan"(@0)
+     因此输给正文里 "The Hang Seng University of Hong Kong" 截出的
+     "University of Hong Kong"(@743)。
+     现在：收集全部命中 → 限定词前扩补全校名 → 安全阀过滤 →
+     按 [位置靠前（抬头优先） + 更完整] 投票决胜。 */
+  const QUALW = /^(seng|chinese|city|baptist|education|polytechnic|science|metropolitan|open|national|australian|technological|hang|inha|hongik|yonsei|korea|sun|yat|sen|tsing|hua|jiao|tong)$/i;
+  const anchorHits = [];
+  if (kind === "univ") {
+    for (const [re] of MAP) {
+      let m;
+      const rx = new RegExp(re.source, "gi");
+      while ((m = rx.exec(flat)) !== null) {
+        if (m.index == null) continue;
+        let st = m.index, en = m.index + m[0].length;
+        /* 安全阀（v1.19.11）：命中片段本身必须像校名 */
+        let seg = flat.slice(st, en);
+        /* 后扩要跳过中文：抬头常是 "Lingnan 嶺南大學 University" 中英混排，
+           直接取下一个词会拿到「嶺南大學」而漏掉 University */
+        const afterW0 = (flat.slice(en).replace(/^[\u4e00-\u9fff\s]+/, "").trimStart().split(" ")[0] || "");
+        if (/^(University|College|Institute|Academy|Polytechnic|School)$/i.test(afterW0)) seg += " " + afterW0;
+        if (!/university|college|institute|academy|polytechnic|school/i.test(seg) && seg.trim().length < 12) continue;
+        /* 限定词前扩：Hang Seng University of Hong Kong 不能被截成 University of Hong Kong */
+        const beforeWords = flat.slice(0, st).split(" ").filter(Boolean);
+        const extra = [];
+        while (beforeWords.length && QUALW.test(beforeWords[beforeWords.length - 1])) extra.unshift(beforeWords.pop());
+        const extraStr = extra.length ? extra.join(" ") + " " : "";
+        let text = (extraStr + flat.slice(st, en)).replace(/\s+/g, " ").trim();
+        /* 后扩：Harvard → Harvard University、LINGNAN → LINGNAN UNIVERSITY */
+        if (/^(University|College|Institute|Academy|Polytechnic|School)$/i.test(afterW0)) text += " " + afterW0;
+        const pw2 = flat.slice(0, Math.max(0, st - extraStr.length)).split(" ").filter(Boolean);
+        if (pw2.length && /^the$/i.test(pw2[pw2.length - 1])) text = "The " + text;
+        if (text.length < (/[\u4e00-\u9fff]/.test(text) ? 2 : 8)) continue;
+        anchorHits.push({ pos: st - extraStr.length, text: text });
+      }
+    }
+    if (anchorHits.length) {
+      /* 投票：位置靠前（抬头）优先；同位置取更完整的校名 */
+      anchorHits.sort((a, b) => a.pos - b.pos || b.text.length - a.text.length);
+      return anchorHits[0].text;
+    }
+    /* 锚点全被安全阀过滤（如全文只有 HKU / POLYU 这类缩写）→ 返回空字符串，
+       交由 resolveUnivName 的域名/缩写/关键词/全文扫描兜底；
+       绝不掉进下方 major 的返回结构（那会让校名变成 {clean,raw,degHint,sc} 对象） */
+    return "";
+  }
   for (const [re] of MAP) {
     const m = flat.match(new RegExp(re.source, "i"));
     if (!m || m.index == null) continue;
@@ -3651,19 +3699,8 @@ function extractByVote(rows, kind) {
       const afterW = (flat.slice(en).trimStart().split(" ")[0] || "");
       if (/^(University|College|Institute)$/i.test(afterW)) text += " " + afterW;
     }
-    /* 🔴 安全阀（v1.19.11）：锚点命中片段本身必须「像校名」——
-       含 University/College/… 主体词，或本身 ≥12 字符（允许后扩一个主体词）。
-       否则 "must be satisfied" 的 must、"further reading" 的 reading 这类普通单词，
-       会借上文任意 "University" 词拼装成伪校名（HKU offer → 澳门科技大学事故） */
-    {
-      let seg = flat.slice(st, en);
-      const afterW0 = (flat.slice(en).trimStart().split(" ")[0] || "");
-      if (/^(University|College|Institute|Academy|Polytechnic|School)$/i.test(afterW0)) seg += " " + afterW0;
-      if (!/university|college|institute|academy|polytechnic|school/i.test(seg) && seg.trim().length < 12) continue;
-    }
-    /* 中文校名 2~4 字合法，勿用英文长度阈值误杀 */
+    /* 安全阀已上移至 anchorHits 收集处（v1.19.12）；此处保留长度校验 */
     if (text.length < (/[\u4e00-\u9fff]/.test(text) ? 2 : 8)) continue;
-    if (kind === "univ") return text;
     return { clean: cleanMajor(text), raw: text,
              degHint: (text.match(/\((LLM|LLB|MSc|MA|MBA|MPhil|PhD)\)/i) || [])[1] || null,
              sc: 999 };
@@ -3906,6 +3943,7 @@ const UNIV_FP = [
   ["Hong Kong Baptist University", "香港浸会大学", "🇭🇰", ["HKBU"], ["hkbu.edu.hk"], ["hkbu", "baptist university"]],
   ["The Education University of Hong Kong", "香港教育大学", "🇭🇰", ["EDUHK"], ["eduhk.hk"], ["eduhk", "education university of hong kong"]],
   ["Lingnan University", "岭南大学", "🇭🇰", ["LINGNAN"], ["ln.edu.hk"], ["lingnan"]],
+  ["The Hang Seng University of Hong Kong", "香港恒生大学", "🇭🇰", [], ["hsu.edu.hk"], ["hang seng university"]],
   ["Hong Kong Metropolitan University", "香港都会大学", "🇭🇰", ["HKMU"], ["hkmu.edu.hk"], ["metropolitan university of hong kong"]],
   ["Macau University of Science and Technology", "澳门科技大学", "🇲🇴", [], ["must.edu.mo"], ["macau university of science"]],
   /* ---------- 中国澳门 ---------- */
@@ -4194,7 +4232,8 @@ const UNIV_MAP = [
   [/aston university/i, "阿斯顿大学", "🇬🇧"],
   /* ---- 港澳 ---- */
   [/chinese university of hong kong|\bcuhk\b/i, "香港中文大学", "🇭🇰"],
-  [/university of hong kong|hong kong university(?! of science)|\bhku\b/i, "香港大学", "🇭🇰"],
+  [/hang seng university of hong kong|hang seng university/i, "香港恒生大学", "🇭🇰"],
+  [/(?<!hang seng )university of hong kong|hong kong university(?! of science)|\bhku\b/i, "香港大学", "🇭🇰"],
   [/hong kong polytechnic|polyu\b/i, "香港理工大学", "🇭🇰"],
   [/city university of hong kong|cityu/i, "香港城市大学", "🇭🇰"],
   [/hong kong baptist|hkbu/i, "香港浸会大学", "🇭🇰"],
