@@ -269,7 +269,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.10</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.11</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -431,7 +431,7 @@ body.stu-open #fab-top, body.stu-open #fab-feedback{display:none!important}
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.10</footer>
+  <footer>自由未来 FreeFuture · v1.19.11</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -3164,8 +3164,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.10";
+const VERSION = "v1.19.11";
 const CHANGELOG = [
+  { v: "v1.19.11", t: "2026-10-21", n: "🔧 校名锚点防劫持系列修复（HKU offer 被填成澳门科技大学事故）：① extractByVote 词典锚点层加安全阀——命中片段必须含 University/College 等主体词或本身 ≥12 字符，普通单词（must be satisfied / further reading / fitness）不再能借上文拼装成伪校名；② UNIV_MAP 删除 60 余处「英文单词型」裸缩写分支（must/fit/reading/bath/rice/brown/duke/kent/essex/davis/york/um/lbs/bu/uw/mit 等），全名分支保留，缩写兜底改由大小写敏感的指纹库承担；③ 补 HKU 官方词序 University of Hong Kong（原正则只有 hong kong university 词序，永远匹配不到）；④ UNIV_FP 补澳门科技大学指纹（域名 must.edu.mo，不带 MUST 缩写）；⑤ mapUnivCn 改为命中文本最长者胜；⑥ resolveUnivName 对不像校名的 raw 增加全文关键词兜底；⑦ cnUnivScan 繁简归一（嶺南大學→岭南大学）。" },
   { v: "v1.19.10", t: "2026-10-21", n: "🔧 专业匹配排序修复：词典「猜」在得分平局时不再取最长条目，改为按覆盖率决胜（条目被输入解释的比例 → 输入被解释的比例 → 更短者）。修复 Master of Science in Family Office Management 被误配成 Human Development（人类发展与家庭研究）的问题，现正确落到 Family Studies（家庭研究）；同类收益：Quantitative Risk Analytics → 量化金融、MSc Finance → 金融学。同步修复专业字典 632 处变体中文吞字（@与工程 / @与研究 / @管理 / @人类与生物 等），以 2026-10-21 提供的中英对照全文回填 data/major_A~D.js，主条目 365 + 变体 851 全量配齐。" },
   { v: "v1.19.8", t: "2026-10-21", n: "① 修「连续上传多张 offer 时，某张 OCR 失败会继承上一张的校名/专业/学位」（根因：runOCR 的 catch 分支直接 afterOCR([]) 却没清空 App.ocrLines，prefillFields 于是用上一张的识别行去投票填字段，出现「传的是 A 校图、确认页却显示上一张 B 校」的错配，正是用户截图里『港校图填出波士顿大学』的成因）；现在 catch 首行强制清空 App.ocrLines 与各类 guess，OCR 失败时确认页是干净空表单、由用户手动填写，绝不再显示别的学校。② 本次仅修根因1；专业名『瞎猜』污染与专业字典补全另立 task，不混入本次发布" },
   { v: "v1.19.7", t: "2026-10-20", n: "① 修「传公众号草稿预填的院校介绍对不上手敲校名」：原来 generate() 只读表单不回写 App.fields，预填查字典时读的是 OCR 初值（例：手敲「香港岭南大学」，字典却按 OCR 认错的「香港大学」套了港大介绍与排名）；现在生成前先把手敲值写回 App.fields，并新增「多候选按优先级查字典」——海报定稿手敲名 > 表单当前值 > 中文栏 > 英文栏 > OCR 结果，英文校名自动转中文再查；标题校名与命中条目不一致时在提示条上明确警告，不再静默套错介绍。顺带修中英切换丢改动（切语言前先把当前语言的手敲值收进 App.fields）；② 打码页「大学名称」下新增「校名前国旗」下拉：默认「自动（按手敲校名推断，选项上直接显示推断结果）」，可选具体国家/地区或「不加国旗」，直接决定生成页冠名区校名前的国旗；flagFromCn 改为先查大学指纹库（UNIV_FP，岭南大学/Lingnan University 等直接命中），再退回名称表与地区关键词，并过滤指纹表里混着的缩写串（HGSE 之类）误当旗子；国旗仅在中文冠名区生效，英文模式自动隐藏该行" },
@@ -3650,6 +3651,16 @@ function extractByVote(rows, kind) {
       const afterW = (flat.slice(en).trimStart().split(" ")[0] || "");
       if (/^(University|College|Institute)$/i.test(afterW)) text += " " + afterW;
     }
+    /* 🔴 安全阀（v1.19.11）：锚点命中片段本身必须「像校名」——
+       含 University/College/… 主体词，或本身 ≥12 字符（允许后扩一个主体词）。
+       否则 "must be satisfied" 的 must、"further reading" 的 reading 这类普通单词，
+       会借上文任意 "University" 词拼装成伪校名（HKU offer → 澳门科技大学事故） */
+    {
+      let seg = flat.slice(st, en);
+      const afterW0 = (flat.slice(en).trimStart().split(" ")[0] || "");
+      if (/^(University|College|Institute|Academy|Polytechnic|School)$/i.test(afterW0)) seg += " " + afterW0;
+      if (!/university|college|institute|academy|polytechnic|school/i.test(seg) && seg.trim().length < 12) continue;
+    }
     /* 中文校名 2~4 字合法，勿用英文长度阈值误杀 */
     if (text.length < (/[\u4e00-\u9fff]/.test(text) ? 2 : 8)) continue;
     if (kind === "univ") return text;
@@ -3887,7 +3898,7 @@ const UNIV_FP = [
   ["Coventry University", "考文垂大学", "🇬🇧", ["COVENTRY"], ["coventry.ac.uk"], ["coventry"]],
   ["University of Strathclyde", "斯特拉斯克莱德大学", "🇬🇧", ["STRATHCLYDE"], ["strath.ac.uk"], ["strathclyde"]],
   /* ---------- 中国香港 ---------- */
-  ["The University of Hong Kong", "香港大学", "🇭🇰", ["HKU"], ["hku.hk"], ["hong kong university", "hku"]],
+  ["The University of Hong Kong", "香港大学", "🇭🇰", ["HKU"], ["hku.hk"], ["hong kong university", "university of hong kong", "hku"]],
   ["The Chinese University of Hong Kong", "香港中文大学", "🇭🇰", ["CUHK"], ["cuhk.edu.hk"], ["chinese university of hong kong", "cuhk"]],
   ["The Hong Kong University of Science and Technology", "香港科技大学", "🇭🇰", ["HKUST"], ["ust.hk"], ["hkust", "hong kong university of science"]],
   ["The Hong Kong Polytechnic University", "香港理工大学", "🇭🇰", ["POLYU", "HKPOLYU"], ["polyu.edu.hk"], ["polyu", "hong kong polytechnic"]],
@@ -3896,6 +3907,11 @@ const UNIV_FP = [
   ["The Education University of Hong Kong", "香港教育大学", "🇭🇰", ["EDUHK"], ["eduhk.hk"], ["eduhk", "education university of hong kong"]],
   ["Lingnan University", "岭南大学", "🇭🇰", ["LINGNAN"], ["ln.edu.hk"], ["lingnan"]],
   ["Hong Kong Metropolitan University", "香港都会大学", "🇭🇰", ["HKMU"], ["hkmu.edu.hk"], ["metropolitan university of hong kong"]],
+  ["Macau University of Science and Technology", "澳门科技大学", "🇲🇴", [], ["must.edu.mo"], ["macau university of science"]],
+  /* ---------- 中国澳门 ---------- */
+  ["University of Macau", "澳门大学", "🇲🇴", [], ["um.edu.mo"], ["university of macau"]],
+  ["Macao Polytechnic University", "澳门理工大学", "🇲🇴", [], ["mpu.edu.mo"], ["macao polytechnic"]],
+  ["City University of Macau", "澳门城市大学", "🇲🇴", [], ["uam.edu.mo"], ["city university of macau"]],
   ["The Chinese University of Hong Kong, Shenzhen", "香港中文大学（深圳）", "🇨🇳", ["CUHKSZ"], ["cuhk.edu.cn"], ["cuhk-shenzhen", "cuhk shenzhen"]],
   ["Hong Kong University of Science and Technology (Guangzhou)", "香港科技大学（广州）", "🇨🇳", ["HKUSTGZ"], ["hkust-gz.edu.cn"], ["hkust guangzhou", "hkust-gz"]],
   /* ---------- 新加坡 ---------- */
@@ -4042,6 +4058,18 @@ function resolveUnivName(raw, flat) {
     return { name: f[0], fp: f, how: "scan",
       note: "🤖 未抓到完整校名，按文中关键词补全为「" + f[1] + " " + f[0] + "」" + alt + "，请核对（可直接改）" };
   }
+  /* v1.19.11：raw 完全不像校名（无主体词）时，别把伪校名当结果，
+     退回全文关键词扫描（岭大地址在香港 → 不至于滑到香港大学那种反向错误也靠这层挡） */
+  if (!/university|college|institute|academy|polytechnic|school/i.test(raw || "")) {
+    const sc2 = fpScanText(flat);
+    if (sc2.length) {
+      const f2 = sc2[0];
+      const alt2 = sc2.length > 1
+        ? "（也可能是 " + sc2.slice(1, 3).map(x => x[1]).join(" / ") + "）" : "";
+      return { name: f2[0], fp: f2, how: "scan",
+        note: "🤖 未抓到完整校名，按文中关键词补全为「" + f2[1] + " " + f2[0] + "」" + alt2 + "，请核对（可直接改）" };
+    }
+  }
   return { name: raw || "", fp: null, how: "unknown", note: "" };
 }
 /* 全文关键词扫描（Chicago / Los Angeles / Boston → 候选学校） */
@@ -4064,7 +4092,7 @@ const UNIV_MAP = [
     "⚠️ 易混淆：UIC（伊大芝加哥分校）≠ The University of Chicago（芝加哥大学）。请确认"],
   [/washington university in st/i, "圣路易斯华盛顿大学", "🇺🇸",
     "⚠️ 易混淆：圣路易斯华盛顿 WashU ≠ 华盛顿大学西雅图 UW"],
-  [/university of washington|\buw\b/i, "华盛顿大学", "🇺🇸",
+  [/university of washington/i, "华盛顿大学", "🇺🇸",
     "⚠️ 易混淆：华盛顿大学（西雅图）≠ 圣路易斯华盛顿大学 WashU"],
   [/pennsylvania state|penn state/i, "宾州州立大学", "🇺🇸",
     "⚠️ 易混淆：Penn State ≠ 宾夕法尼亚大学 UPenn"],
@@ -4072,31 +4100,31 @@ const UNIV_MAP = [
     "⚠️ 易混淆：UBC ≠ 哥伦比亚大学 Columbia University"],
   /* ---- 美国 ---- */
   [/harvard/i, "哈佛大学", "🇺🇸"], [/stanford/i, "斯坦福大学", "🇺🇸"],
-  [/mit\b|massachusetts institute/i, "麻省理工学院", "🇺🇸"],
+  [/massachusetts institute/i, "麻省理工学院", "🇺🇸"],
   [/caltech|california institute of technology/i, "加州理工学院", "🇺🇸"],
   [/yale/i, "耶鲁大学", "🇺🇸"], [/princeton/i, "普林斯顿大学", "🇺🇸"],
   [/columbia(?!n)/i, "哥伦比亚大学", "🇺🇸"],
   [/university of chicago|uchicago\b/i, "芝加哥大学", "🇺🇸"],
   [/university of pennsylvania|\bupenn\b/i, "宾夕法尼亚大学", "🇺🇸"],
-  [/duke\b/i, "杜克大学", "🇺🇸"], [/northwestern/i, "西北大学", "🇺🇸"],
+    [/duke university/i, "杜克大学", "🇺🇸"], [/northwestern/i, "西北大学", "🇺🇸"],
   [/johns hopkins|\bjhu\b/i, "约翰霍普金斯大学", "🇺🇸"],
-  [/rice\b/i, "莱斯大学", "🇺🇸"],
+  [/rice university/i, "莱斯大学", "🇺🇸"],
   [/washington university in st|washu/i, "圣路易斯华盛顿大学", "🇺🇸"],
   [/vanderbilt/i, "范德堡大学", "🇺🇸"], [/emory/i, "埃默里大学", "🇺🇸"],
   [/notre dame/i, "圣母大学", "🇺🇸"], [/georgetown/i, "乔治城大学", "🇺🇸"],
-  [/nyu\b|new york university/i, "纽约大学", "🇺🇸"],
-  [/usc\b|university of southern california/i, "南加州大学", "🇺🇸"],
-  [/carnegie mellon|\bcmu\b/i, "卡内基梅隆大学", "🇺🇸"],
-  [/university of michigan|Michigan\b/i, "密歇根大学", "🇺🇸"],
-  [/ucla|los angeles/i, "加州大学洛杉矶分校", "🇺🇸"],
+  [/new york university/i, "纽约大学", "🇺🇸"],
+  [/university of southern california/i, "南加州大学", "🇺🇸"],
+  [/carnegie mellon/i, "卡内基梅隆大学", "🇺🇸"],
+  [/university of michigan/i, "密歇根大学", "🇺🇸"],
+  [/los angeles/i, "加州大学洛杉矶分校", "🇺🇸"],
   [/berkeley/i, "加州大学伯克利分校", "🇺🇸"],
-  [/ucsb\b|santa barbara/i, "加州大学圣塔芭芭拉分校", "🇺🇸"],
-  [/ucsd\b|san diego/i, "加州大学圣地亚哥分校", "🇺🇸"],
+  [/santa barbara/i, "加州大学圣塔芭芭拉分校", "🇺🇸"],
+  [/san diego/i, "加州大学圣地亚哥分校", "🇺🇸"],
   [/uc irvine|irvine/i, "加州大学欧文分校", "🇺🇸"],
-  [/uc davis|davis/i, "加州大学戴维斯分校", "🇺🇸"],
-  [/cornell/i, "康奈尔大学", "🇺🇸"], [/brown\b/i, "布朗大学", "🇺🇸"],
+  [/uc davis|university of california,? davis/i, "加州大学戴维斯分校", "🇺🇸"],
+  [/cornell/i, "康奈尔大学", "🇺🇸"],   [/brown university/i, "布朗大学", "🇺🇸"],
   [/dartmouth/i, "达特茅斯学院", "🇺🇸"],
-  [/university of illinois|uiuc/i, "伊利诺伊大学香槟校区", "🇺🇸"],
+  [/university of illinois/i, "伊利诺伊大学香槟校区", "🇺🇸"],
   [/georgia tech/i, "佐治亚理工学院", "🇺🇸"],
   [/university of texas|ut austin/i, "德克萨斯大学奥斯汀分校", "🇺🇸"],
   [/washington(?!n).*seattle|university of washington/i, "华盛顿大学", "🇺🇸"],
@@ -4105,7 +4133,7 @@ const UNIV_MAP = [
   [/university of florida/i, "佛罗里达大学", "🇺🇸"],
   [/new york university|nyu/i, "纽约大学", "🇺🇸"],
   [/tufts/i, "塔夫茨大学", "🇺🇸"], [/rochester/i, "罗切斯特大学", "🇺🇸"],
-  [/boston university|\bbu\b/i, "波士顿大学", "🇺🇸"],
+  [/boston university/i, "波士顿大学", "🇺🇸"],
   [/boston college/i, "波士顿学院", "🇺🇸"],
   [/north eastern|northeastern/i, "东北大学", "🇺🇸"],
   [/case western/i, "凯斯西储大学", "🇺🇸"],
@@ -4118,70 +4146,70 @@ const UNIV_MAP = [
   [/university of wisconsin/i, "威斯康星麦迪逊", "🇺🇸"],
   [/university of minnesota/i, "明尼苏达双城", "🇺🇸"],
   [/texas a&m/i, "德州农工大学", "🇺🇸"],
-  [/university of virginia|uva\b/i, "弗吉尼亚大学", "🇺🇸"],
+  [/university of virginia/i, "弗吉尼亚大学", "🇺🇸"],
   [/wake forest/i, "维克森林大学", "🇺🇸"],
-  [/university of connecticut|uconn/i, "康涅狄格大学", "🇺🇸"],
+  [/university of connecticut/i, "康涅狄格大学", "🇺🇸"],
   [/brandeis/i, "布兰迪斯大学", "🇺🇸"],
   [/college of william/i, "威廉玛丽学院", "🇺🇸"],
   [/university of delaware/i, "特拉华大学", "🇺🇸"],
-  [/university of massachusetts|umass/i, "马萨诸塞大学阿默斯特", "🇺🇸"],
+  [/university of massachusetts/i, "马萨诸塞大学阿默斯特", "🇺🇸"],
   [/george washington/i, "乔治华盛顿大学", "🇺🇸"],
   [/university of arizona/i, "亚利桑那大学", "🇺🇸"],
   [/arizona state/i, "亚利桑那州立大学", "🇺🇸"],
   [/colorado school of mines/i, "科罗拉多矿业学院", "🇺🇸"],
   [/illinois institute/i, "伊利诺伊理工学院", "🇺🇸"],
   [/parsons|the new school/i, "帕森斯设计学院", "🇺🇸"],
-  [/school of visual arts|\bsva\b/i, "纽约视觉艺术学院", "🇺🇸"],
-  [/jewelry|fashion institute of technology|\bfit\b/i, "纽约时装学院", "🇺🇸"],
+  [/school of visual arts/i, "纽约视觉艺术学院", "🇺🇸"],
+  [/jewelry|fashion institute of technology/i, "纽约时装学院", "🇺🇸"],
   [/berklee/i, "伯克利音乐学院", "🇺🇸"],
   [/johns hopkins peabody|peabody/i, "皮博迪音乐学院", "🇺🇸"],
   /* ---- 英国 ---- */
-  [/oxford/i, "牛津大学", "🇬🇧"], [/cambridge/i, "剑桥大学", "🇬🇧"],
+  [/university of oxford|oxford university/i, "牛津大学", "🇬🇧"], [/university of cambridge|cambridge university/i, "剑桥大学", "🇬🇧"],
   [/imperial college/i, "帝国理工学院", "🇬🇧"],
-  [/ucl\b|university college london/i, "伦敦大学学院", "🇬🇧"],
-  [/london school of economics|\blse\b/i, "伦敦政治经济学院", "🇬🇧"],
-  [/edinburgh/i, "爱丁堡大学", "🇬🇧"], [/manchester(?! metropolitan)/i, "曼彻斯特大学", "🇬🇧"],
-  [/king's college|kcl\b/i, "伦敦国王学院", "🇬🇧"],
-  [/london business school|\blbs\b/i, "伦敦商学院", "🇬🇧"],
-  [/warwick/i, "华威大学", "🇬🇧"], [/bristol/i, "布里斯托大学", "🇬🇧"],
-  [/durham/i, "杜伦大学", "🇬🇧"], [/glasgow/i, "格拉斯哥大学", "🇬🇧"],
-  [/southampton/i, "南安普顿大学", "🇬🇧"], [/birmingham/i, "伯明翰大学", "🇬🇧"],
-  [/leeds\b/i, "利兹大学", "🇬🇧"], [/sheffield/i, "谢菲尔德大学", "🇬🇧"],
+  [/university college london/i, "伦敦大学学院", "🇬🇧"],
+  [/london school of economics/i, "伦敦政治经济学院", "🇬🇧"],
+  [/edinburgh/i, "爱丁堡大学", "🇬🇧"],   [/university of manchester/i, "曼彻斯特大学", "🇬🇧"],
+  [/king's college/i, "伦敦国王学院", "🇬🇧"],
+  [/london business school/i, "伦敦商学院", "🇬🇧"],
+  [/warwick/i, "华威大学", "🇬🇧"],   [/university of bristol/i, "布里斯托大学", "🇬🇧"],
+  [/durham/i, "杜伦大学", "🇬🇧"],   [/university of glasgow/i, "格拉斯哥大学", "🇬🇧"],
+  [/southampton/i, "南安普顿大学", "🇬🇧"],   [/university of birmingham/i, "伯明翰大学", "🇬🇧"],
+  [/university of leeds/i, "利兹大学", "🇬🇧"],   [/university of sheffield/i, "谢菲尔德大学", "🇬🇧"],
   [/st andrews/i, "圣安德鲁斯大学", "🇬🇧"], [/nottingham/i, "诺丁汉大学", "🇬🇧"],
-  [/newcastle/i, "纽卡斯尔大学", "🇬🇧"], [/lancaster/i, "兰卡斯特大学", "🇬🇧"],
-  [/bath\b/i, "巴斯大学", "🇬🇧"], [/liverpool/i, "利物浦大学", "🇬🇧"],
-  [/exeter/i, "埃克塞特大学", "🇬🇧"], [/york\b/i, "约克大学", "🇬🇧"],
+  [/newcastle/i, "纽卡斯尔大学", "🇬🇧"],   [/university of lancaster/i, "兰卡斯特大学", "🇬🇧"],
+    [/university of bath/i, "巴斯大学", "🇬🇧"],   [/university of liverpool/i, "利物浦大学", "🇬🇧"],
+  [/exeter/i, "埃克塞特大学", "🇬🇧"],   [/university of york|york university/i, "约克大学", "🇬🇧"],
   [/cardiff/i, "卡迪夫大学", "🇬🇧"], [/queen.s belfast/i, "贝尔法斯特女王大学", "🇬🇧"],
-  [/aberdeen/i, "阿伯丁大学", "🇬🇧"], [/reading\b/i, "雷丁大学", "🇬🇧"],
+  [/aberdeen/i, "阿伯丁大学", "🇬🇧"],   [/university of reading/i, "雷丁大学", "🇬🇧"],
   [/sussex/i, "萨塞克斯大学", "🇬🇧"], [/loughborough/i, "拉夫堡大学", "🇬🇧"],
-  [/leicester/i, "莱斯特大学", "🇬🇧"], [/surrey/i, "萨里大学", "🇬🇧"],
+    [/university of leicester/i, "莱斯特大学", "🇬🇧"],   [/university of surrey/i, "萨里大学", "🇬🇧"],
   [/durham university/i, "杜伦大学", "🇬🇧"], [/heriot watt/i, "赫瑞瓦特大学", "🇬🇧"],
   [/royal college of art/i, "皇家艺术学院", "🇬🇧"],
   [/central saint martins|university of the arts london/i, "伦敦艺术大学", "🇬🇧"],
   [/goldsmiths/i, "金史密斯学院", "🇬🇧"],
   [/cranfield/i, "克兰菲尔德大学", "🇬🇧"], [/strathclyde/i, "思克莱德大学", "🇬🇧"],
-  [/dundee/i, "邓迪大学", "🇬🇧"], [/city university of london/i, "伦敦城市大学", "🇬🇧"],
-  [/brunel/i, "布鲁内尔大学", "🇬🇧"], [/kent\b/i, "肯特大学", "🇬🇧"],
-  [/essex/i, "埃塞克斯大学", "🇬🇧"], [/east anglia|uea\b/i, "东英吉利大学", "🇬🇧"],
-  [/aston\b/i, "阿斯顿大学", "🇬🇧"],
+  [/university of dundee/i, "邓迪大学", "🇬🇧"], [/city university of london/i, "伦敦城市大学", "🇬🇧"],
+  [/brunel/i, "布鲁内尔大学", "🇬🇧"],   [/university of kent/i, "肯特大学", "🇬🇧"],
+  [/university of essex/i, "埃塞克斯大学", "🇬🇧"], [/east anglia/i, "东英吉利大学", "🇬🇧"],
+  [/aston university/i, "阿斯顿大学", "🇬🇧"],
   /* ---- 港澳 ---- */
   [/chinese university of hong kong|\bcuhk\b/i, "香港中文大学", "🇭🇰"],
-  [/hong kong university(?! of science)|\bhku\b/i, "香港大学", "🇭🇰"],
+  [/university of hong kong|hong kong university(?! of science)|\bhku\b/i, "香港大学", "🇭🇰"],
   [/hong kong polytechnic|polyu\b/i, "香港理工大学", "🇭🇰"],
   [/city university of hong kong|cityu/i, "香港城市大学", "🇭🇰"],
   [/hong kong baptist|hkbu/i, "香港浸会大学", "🇭🇰"],
   [/lingnan/i, "岭南大学", "🇭🇰"],
   [/education university of hong kong|eduhk/i, "香港教育大学", "🇭🇰"],
   [/hong kong university of science|hkust/i, "香港科技大学", "🇭🇰"],
-  [/university of macau|\bum\b(?!.*determine)/i, "澳门大学", "🇲🇴"],
+  [/university of macau/i, "澳门大学", "🇲🇴"],
   [/macau polytechnic/i, "澳门理工大学", "🇲🇴"],
-  [/macau university of science|must\b/i, "澳门科技大学", "🇲🇴"],
+  [/macau university of science/i, "澳门科技大学", "🇲🇴"],
   [/macao city|city university of macau/i, "澳门城市大学", "🇲🇴"],
   /* ---- 新加坡 / 马来 / 日韩 ---- */
-  [/national university of singapore|\bnus\b/i, "新加坡国立大学", "🇸🇬"],
-  [/ntu\b|nanyang/i, "南洋理工大学", "🇸🇬"],
-  [/smu\b|singapore management/i, "新加坡管理大学", "🇸🇬"],
-  [/sutd\b|singapore university of technology/i, "新加坡科技设计大学", "🇸🇬"],
+  [/national university of singapore/i, "新加坡国立大学", "🇸🇬"],
+  [/nanyang/i, "南洋理工大学", "🇸🇬"],
+  [/singapore management/i, "新加坡管理大学", "🇸🇬"],
+  [/singapore university of technology/i, "新加坡科技设计大学", "🇸🇬"],
   [/malaya|universiti malaya|\bum\b malaysia/i, "马来亚大学", "🇲🇾"],
   [/university of tokyo|tokyo daigaku|東京大学/i, "东京大学", "🇯🇵"],
   [/kyoto university|京都大学/i, "京都大学", "🇯🇵"],
@@ -4191,21 +4219,21 @@ const UNIV_MAP = [
   [/postech|포항공과/i, "浦项科技大学", "🇰🇷"],
   [/yonsei|연세/i, "延世大学", "🇰🇷"], [/korea university|고려/i, "高丽大学", "🇰🇷"],
   /* ---- 澳新 ---- */
-  [/australian national|\banu\b/i, "澳大利亚国立大学", "🇦🇺"],
-  [/melbourne/i, "墨尔本大学", "🇦🇺"], [/sydney/i, "悉尼大学", "🇦🇺"],
+  [/australian national/i, "澳大利亚国立大学", "🇦🇺"],
+  [/university of melbourne/i, "墨尔本大学", "🇦🇺"], [/university of sydney/i, "悉尼大学", "🇦🇺"],
   [/unsw|new south wales/i, "新南威尔士大学", "🇦🇺"],
-  [/queensland/i, "昆士兰大学", "🇦🇺"],
-  [/monash/i, "莫纳什大学", "🇦🇺"], [/western australia|\buwa\b/i, "西澳大学", "🇦🇺"],
-  [/adelaide/i, "阿德莱德大学", "🇦🇺"],
+  [/university of queensland/i, "昆士兰大学", "🇦🇺"],
+  [/monash university/i, "莫纳什大学", "🇦🇺"],   [/western australia/i, "西澳大学", "🇦🇺"],
+  [/university of adelaide/i, "阿德莱德大学", "🇦🇺"],
   [/university of auckland/i, "奥克兰大学", "🇳🇿"],
   /* ---- 加拿大 ---- */
-  [/toronto/i, "多伦多大学", "🇨🇦"], [/mcgill/i, "麦吉尔大学", "🇨🇦"],
-  [/british columbia|\bubc\b/i, "英属哥伦比亚大学", "🇨🇦"],
-  [/waterloo/i, "滑铁卢大学", "🇨🇦"], [/mcmaster/i, "麦克马斯特大学", "🇨🇦"],
-  [/alberta/i, "阿尔伯塔大学", "🇨🇦"], [/queen.s university/i, "女王大学", "🇨🇦"],
-  [/western university/i, "西安大略大学", "🇨🇦"], [/montreal/i, "蒙特利尔大学", "🇨🇦"],
-  [/simon fraser|\bsfu\b/i, "西蒙菲莎大学", "🇨🇦"], [/calgary\b/i, "卡尔加里大学", "🇨🇦"],
-  [/dalhousie/i, "达尔豪斯大学", "🇨🇦"], [/ottawa/i, "渥太华大学", "🇨🇦"],
+  [/university of toronto/i, "多伦多大学", "🇨🇦"], [/mcgill university/i, "麦吉尔大学", "🇨🇦"],
+  [/british columbia/i, "英属哥伦比亚大学", "🇨🇦"],
+  [/university of waterloo/i, "滑铁卢大学", "🇨🇦"], [/mcmaster university/i, "麦克马斯特大学", "🇨🇦"],
+  [/university of alberta/i, "阿尔伯塔大学", "🇨🇦"], [/queen.s university/i, "女王大学", "🇨🇦"],
+  [/western university/i, "西安大略大学", "🇨🇦"],   [/university of montreal|montreal university/i, "蒙特利尔大学", "🇨🇦"],
+  [/simon fraser/i, "西蒙菲莎大学", "🇨🇦"],   [/university of calgary/i, "卡尔加里大学", "🇨🇦"],
+  [/dalhousie university/i, "达尔豪斯大学", "🇨🇦"], [/university of ottawa/i, "渥太华大学", "🇨🇦"],
   [/victoria university of|university of victoria/i, "维多利亚大学", "🇨🇦"],
   [/york university/i, "约克大学", "🇨🇦"],
   /* ---- 欧洲大陆 ---- */
@@ -4310,7 +4338,15 @@ const UNIV_MAP = [
 ];
 function mapUnivCn(en) {
   if (!en) return { cn: "", flag: "" };
-  for (const [re, cn, flag] of UNIV_MAP) if (re.test(en)) return { cn, flag };
+  /* v1.19.11：取「命中文本最长」的条目，不再表中第一个——
+     防短模式从长校名里截胡（New York University vs 约克 一类） */
+  let bestM = null;
+  for (const [re, cn, flag] of UNIV_MAP) {
+    const mm = en.match(re);
+    if (!mm) continue;
+    if (!bestM || mm[0].length > bestM.len) bestM = { cn, flag, len: mm[0].length };
+  }
+  if (bestM) return { cn: bestM.cn, flag: bestM.flag };
   /* 指纹库兜底（v1.5.0）：英文全名精确 / 主体匹配 / 域名 / 缩写 */
   const lo = en.toLowerCase();
   for (const fp of UNIV_FP) if (fp[0].toLowerCase() === lo) return { cn: fp[1], flag: fp[2] };
@@ -4720,8 +4756,67 @@ function cnMajorToEn(cn) {
   return hit ? (hit.canon || hit.term) : "";
 }
 /* 中文校名兜底：取正文里最靠前、最长的中文校名（通知书抬头是本校，合作院校在后） */
+/* 繁体→简体：港澳通知书常用繁体抬头（嶺南大學），不归一则中文兜底永远扫不到 */
+const CN_TRAD2SIMP = {
+  "一切":"一切", "與":"与", "醜":"丑", "專":"专", "業":"业", "東":"东", "爲":"为", "乃":"乃", "麼":"么", "乎":"乎",
+  "樂":"乐", "習":"习", "書":"书", "買":"买", "於":"于", "虧":"亏", "雲":"云", "云":"云", "交":"交", "產":"产",
+  "人":"人", "從":"从", "令":"令", "價":"价", "任":"任", "伍":"伍", "眾":"众", "優":"优", "會":"会", "傘":"伞",
+  "傳":"传", "傷":"伤", "倫":"伦", "偽":"伪", "低":"低", "體":"体", "何":"何", "使":"使", "例":"例", "側":"侧",
+  "俸":"俸", "倘":"倘", "債":"债", "假":"假", "偏":"偏", "償":"偿", "兒":"儿", "允":"允", "先":"先", "全":"全",
+  "公":"公", "關":"关", "茲":"兹", "養":"养", "內":"内", "冊":"册", "寫":"写", "農":"农", "准":"准", "減":"减",
+  "幾":"几", "凡":"凡", "憑":"凭", "分":"分", "劃":"划", "列":"列", "則":"则", "剛":"刚", "初":"初", "別":"别",
+  "製":"制", "刻":"刻", "前":"前", "劇":"剧", "勸":"劝", "辦":"办", "務":"务", "劣":"劣", "動":"动", "北":"北",
+  "區":"区", "醫":"医", "華":"华", "卑":"卑", "單":"单", "賣":"卖", "南":"南", "衛":"卫", "即":"即", "廳":"厅",
+  "歷":"历", "廈":"厦", "廚":"厨", "雙":"双", "反":"反", "發":"发", "古":"古", "叫":"叫", "臺":"台", "右":"右",
+  "號":"号", "各":"各", "後":"后", "聽":"听", "呈":"呈", "命":"命", "諮":"咨", "哉":"哉", "響":"响", "哪":"哪",
+  "善":"善", "因":"因", "園":"园", "國":"国", "圖":"图", "在":"在", "地":"地", "壞":"坏", "壯":"壮", "聲":"声",
+  "殼":"壳", "處":"处", "復":"复", "複":"复", "多":"多", "大":"大", "央":"央", "頭":"头", "奉":"奉", "獎":"奖",
+  "好":"好", "如":"如", "始":"始", "孤":"孤", "學":"学", "寧":"宁", "宗":"宗", "實":"实", "家":"家", "賓":"宾",
+  "密":"密", "寡":"寡", "對":"对", "尋":"寻", "導":"导", "封":"封", "將":"将", "尊":"尊", "小":"小", "少":"少",
+  "嘗":"尝", "尾":"尾", "層":"层", "屬":"属", "嶼":"屿", "歲":"岁", "島":"岛", "嶺":"岭", "左":"左", "已":"已",
+  "幣":"币", "師":"师", "乾":"干", "平":"平", "並":"并", "幼":"幼", "廣":"广", "慶":"庆", "應":"应", "底":"底",
+  "廢":"废", "開":"开", "歸":"归", "錄":"录", "彩":"彩", "彼":"彼", "徵":"征", "徐":"徐", "憶":"忆", "快":"快",
+  "忽":"忽", "態":"态", "怎":"怎", "急":"急", "總":"总", "懇":"恳", "惡":"恶", "惠":"惠", "癒":"愈", "慢":"慢",
+  "戲":"戏", "纔":"才", "批":"批", "護":"护", "擇":"择", "損":"损", "換":"换", "據":"据", "排":"排", "攝":"摄",
+  "攤":"摊", "支":"支", "故":"故", "教":"教", "數":"数", "整":"整", "斷":"断", "斯":"斯", "新":"新", "方":"方",
+  "無":"无", "既":"既", "舊":"旧", "旨":"旨", "早":"早", "時":"时", "明":"明", "是":"是", "晝":"昼", "顯":"显",
+  "曉":"晓", "晚":"晚", "曰":"曰", "有":"有", "服":"服", "未":"未", "末":"末", "術":"术", "機":"机", "雜":"杂",
+  "權":"权", "條":"条", "來":"来", "構":"构", "櫃":"柜", "樹":"树", "樣":"样", "檔":"档", "檢":"检", "楚":"楚",
+  "樓":"楼", "正":"正", "此":"此", "歪":"歪", "殘":"残", "每":"每", "畢":"毕", "求":"求", "匯":"汇", "滬":"沪",
+  "洩":"泄", "法":"法", "津":"津", "派":"派", "流":"流", "淺":"浅", "濁":"浊", "測":"测", "濟":"济", "濃":"浓",
+  "潤":"润", "清":"清", "漸":"渐", "漁":"渔", "溫":"温", "灣":"湾", "濕":"湿", "漏":"漏", "燈":"灯", "爐":"炉",
+  "點":"点", "焉":"焉", "然":"然", "物":"物", "狀":"状", "獨":"独", "猝":"猝", "獻":"献", "環":"环", "現":"现",
+  "理":"理", "瓊":"琼", "甚":"甚", "由":"由", "電":"电", "畫":"画", "白":"白", "監":"监", "盤":"盘", "直":"直",
+  "真":"真", "知":"知", "短":"短", "碼":"码", "碩":"硕", "私":"私", "種":"种", "秘":"秘", "稅":"税", "窮":"穷",
+  "空":"空", "突":"突", "立":"立", "筆":"笔", "等":"等", "簽":"签", "簡":"简", "簫":"箫", "類":"类", "粵":"粤",
+  "係":"系", "繁":"繁", "紅":"红", "約":"约", "純":"纯", "紙":"纸", "線":"线", "練":"练", "細":"细", "終":"终",
+  "結":"结", "給":"给", "絡":"络", "絕":"绝", "統":"统", "績":"绩", "緒":"绪", "綜":"综", "綠":"绿", "緩":"缓",
+  "緣":"缘", "繳":"缴", "網":"网", "美":"美", "群":"群", "老":"老", "職":"职", "聯":"联", "背":"背", "勝":"胜",
+  "腦":"脑", "捨":"舍", "般":"般", "藝":"艺", "節":"节", "蘇":"苏", "苟":"苟", "若":"若", "藥":"药", "營":"营",
+  "著":"著", "藍":"蓝", "薪":"薪", "藏":"藏", "虛":"虚", "蝦":"虾", "補":"补", "錶":"表", "裝":"装", "觀":"观",
+  "規":"规", "視":"视", "覺":"觉", "言":"言", "計":"计", "討":"讨", "讓":"让", "議":"议", "訊":"讯", "記":"记",
+  "講":"讲", "許":"许", "論":"论", "設":"设", "訪":"访", "證":"证", "評":"评", "診":"诊", "詞":"词", "試":"试",
+  "話":"话", "詢":"询", "該":"该", "語":"语", "誤":"误", "說":"说", "請":"请", "諸":"诸", "讀":"读", "課":"课",
+  "誰":"谁", "調":"调", "談":"谈", "謂":"谓", "諭":"谕", "譜":"谱", "貝":"贝", "負":"负", "財":"财", "敗":"败",
+  "帳":"账", "貨":"货", "質":"质", "販":"贩", "貧":"贫", "賤":"贱", "貼":"贴", "貴":"贵", "貸":"贷", "貿":"贸",
+  "費":"费", "資":"资", "賭":"赌", "賞":"赏", "賜":"赐", "贈":"赠", "贏":"赢", "贛":"赣", "軟":"软", "輕":"轻",
+  "輔":"辅", "輸":"输", "辯":"辩", "邊":"边", "過":"过", "運":"运", "還":"还", "這":"这", "遠":"远", "迟":"迟",
+  "遞":"递", "速":"速", "道":"道", "那":"那", "郵":"邮", "鄰":"邻", "部":"部", "酬":"酬", "裡":"里", "鐘":"钟",
+  "鋼":"钢", "錢":"钱", "鈴":"铃", "銀":"银", "鋪":"铺", "鏈":"链", "銷":"销", "鍋":"锅", "錯":"错", "鑼":"锣",
+  "鎮":"镇", "長":"长", "門":"门", "問":"问", "間":"间", "閩":"闽", "隊":"队", "陽":"阳", "陰":"阴", "際":"际",
+  "陝":"陕", "隨":"随", "隱":"隐", "難":"难", "霧":"雾", "露":"露", "非":"非", "麵":"面", "面":"面", "韻":"韵",
+  "頁":"页", "頂":"顶", "項":"项", "須":"须", "頒":"颁", "題":"题", "額":"额", "風":"风", "飯":"饭", "飲":"饮",
+  "飾":"饰", "館":"馆", "驗":"验", "驟":"骤", "高":"高", "魚":"鱼", "魯":"鲁", "黃":"黄", "齒":"齿", "齡":"龄"
+};
+let CN_TRAD_RE = null;
+function trad2simp(s) {
+  if (!s) return s;
+  /* 字符类由映射表动态生成——加字只需改 CN_TRAD2SIMP，不用动这里 */
+  if (!CN_TRAD_RE) CN_TRAD_RE = new RegExp("[" + Object.keys(CN_TRAD2SIMP).join("") + "]", "g");
+  return s.replace(CN_TRAD_RE, c => CN_TRAD2SIMP[c] || c);
+}
 function cnUnivScan(flat) {
-  const f = flat || "";
+  const f = trad2simp(flat || "");
   if (cjkCount(f) < 2) return null;
   let best = null;
   for (const row of UNIV_FP) {
