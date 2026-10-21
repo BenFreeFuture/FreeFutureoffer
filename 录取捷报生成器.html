@@ -269,7 +269,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.13</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.14</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -431,7 +431,7 @@ body.stu-open #fab-top, body.stu-open #fab-feedback{display:none!important}
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.13</footer>
+  <footer>自由未来 FreeFuture · v1.19.14</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -3178,8 +3178,22 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.13";
+const VERSION = "v1.19.14";
+/* 🔴 版本号规范（2026-10-21 用户定稿，提为代码供检测断言）：
+   形如 v主.次.修订，修订号恒 ≤2 位；修订号 +1 满 100 时进位到次版本、修订重置为 1。
+   v1.19.99 → v1.20.1（绝不允许出现 v1.19.100 这种三位修订号）*/
+const VERSION_RE = /^v?(\d+)\.(\d+)\.(\d{1,2})$/;
+function bumpVersion(cur) {
+  const m = (cur || "").match(VERSION_RE);
+  if (!m) return null;
+  let major = +m[1], minor = +m[2], patch_ = +m[3];
+  patch_ += 1;
+  if (patch_ > 99) { minor += 1; patch_ = 1; }   // 修订号超过 2 位 → 递进次版本
+  return "v" + major + "." + minor + "." + patch_;
+}
+
 const CHANGELOG = [
+  { v: "v1.19.14", t: "2026-10-21", n: "v1.19.14 版本号进位规则落成代码（用户定稿：1.19.x 的 x 超过 2 位数就递进到 1.20.1）：app.js 新增 VERSION_RE + bumpVersion()，修订号 +1 满 100 时次版本进位、修订重置为 1，绝不再出现三位修订号；配套检测 C11（行为 6 项 + 静态 1 项）已入 tests/run_all.sh。" },
   { v: "v1.19.13", t: "2026-10-21", n: "v1.19.13 把 10 条长期约束从注释降级为代码（详见 tests/ 与 offergen-constraints skill）：① engine.js 提 REDACT_CATS 常量（打码 9 类），补护照号标签/正则，金额加 gate 门控默认不打；② app.js 提 OUTPUT_MIME/OUTPUT_MAX_BYTES/OUT_NAME_RE 常量与 resultFileName() 函数；③ 修根因2——mapMajorCn 增加 allowGuess 参数，prefillFields 改用严格模式，专业只在字典精确/包含命中时自动填，猜不中的留空让人工核对。" },
   { v: "v1.19.12", t: "2026-10-21", n: "v1.19.12 恢复 v1.3.0 定稿的校名多候选投票约束：锚点层旧实现按 UNIV_MAP 表序取第一个命中就返回，从未真正执行投票，导致岭南大学 offer（抬头 Lingnan 位于文首）被正文里学生母校 The Hang Seng University of Hong Kong 截出的 University of Hong Kong抢走。现改为收集全部命中 → 限定词前扩补全校名 → 安全阀过滤 → 按位置靠前与完整度投票。同步补香港恒生大学指纹，HKU 正则加否定后瞻。" },
   { v: "v1.19.11", t: "2026-10-21", n: "🔧 校名锚点防劫持系列修复（HKU offer 被填成澳门科技大学事故）：① extractByVote 词典锚点层加安全阀——命中片段必须含 University/College 等主体词或本身 ≥12 字符，普通单词（must be satisfied / further reading / fitness）不再能借上文拼装成伪校名；② UNIV_MAP 删除 60 余处「英文单词型」裸缩写分支（must/fit/reading/bath/rice/brown/duke/kent/essex/davis/york/um/lbs/bu/uw/mit 等），全名分支保留，缩写兜底改由大小写敏感的指纹库承担；③ 补 HKU 官方词序 University of Hong Kong（原正则只有 hong kong university 词序，永远匹配不到）；④ UNIV_FP 补澳门科技大学指纹（域名 must.edu.mo，不带 MUST 缩写）；⑤ mapUnivCn 改为命中文本最长者胜；⑥ resolveUnivName 对不像校名的 raw 增加全文关键词兜底；⑦ cnUnivScan 繁简归一（嶺南大學→岭南大学）。" },
