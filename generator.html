@@ -269,7 +269,7 @@ footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
   <footer>
     🏢 自由未来 FreeFuture · 深圳南山粤海街道曙光大厦210<br>
     📞 黄老师 18026839160 · www.freefuture.com.cn<br>
-    <span id="footer-ver">v1.19.12</span> · 母版 1005 · 引擎 FreePoster/Canvas
+    <span id="footer-ver">v1.19.13</span> · 母版 1005 · 引擎 FreePoster/Canvas
   </footer>
 </div>
 
@@ -431,7 +431,7 @@ body.stu-open #fab-top, body.stu-open #fab-feedback{display:none!important}
       </div>
     </div>
   </div>
-  <footer>自由未来 FreeFuture · v1.19.12</footer>
+  <footer>自由未来 FreeFuture · v1.19.13</footer>
 </div>
 
 <!-- ================= 页面 3.5 · 学生信息（同事填写） ================= -->
@@ -1044,6 +1044,10 @@ function layoutName(o) {
  * 输入：tesseract words [{text, bbox:{x0,y0,x1,y1}}] 按行组织
  * 策略：标签行 -> 标签右边界 -> 字段区整段覆盖
  * ============================================================ */
+/* 🔴 打码 9 类（2026-10-05 永久定稿，v1.19.13 提为常量供检测断言）
+   顺序即优先级；第 9 类「金额」默认不打，走开关（gate: "amount"）*/
+const REDACT_CATS = ["姓名", "电话", "学生邮箱", "申请号", "身份证", "护照号", "博导", "学号", "金额"];
+const REDACT_CREAM = "#F6D3A1";           // 打码色 = 奶油黄（定稿）
 const REDACT_TAGS = [
   { cat: "姓名", re: /^(name|applicant(\u2019s)? name|student name)\s*[:：]/i },
   { cat: "姓名", re: /^dear\s+(mr|mrs|ms|miss|dr|prof)?\.?\s*/i },
@@ -1055,13 +1059,19 @@ const REDACT_TAGS = [
   { cat: "电话", re: /^(tel|phone|mobile|contact)\s*[:：]/i },
   { cat: "邮箱", re: /[\w.+-]+@[\w-]+\.[\w.]+/ },
   { cat: "导师", re: /(supervisor|director of studies|advisor|mentor)\s*[:：]/i },
+  { cat: "护照号", re: /^(passport\s*(no\.?|number)|护照号)\s*[:：]/i },
 ];
+/* 金额：默认不打，走开关 —— detectRedactions 里检查 App.redactAmount */
+const REDACT_AMOUNT_GATE = "amount";
 const REDACT_REGEX = [
   { cat: "申请号", re: /\b[A-Z]{2,4}\d{6,12}\b/ },
   { cat: "学号", re: /\b\d{6,11}\b/ },
   { cat: "身份证", re: /\b\d{17}[\dXx]\b/ },
   { cat: "邮箱", re: /\b[\w.+-]+@[\w-]+\.[\w.]+\b/ },
   { cat: "电话", re: /(?:\+\d{1,3}[\s-]?\d{7,12}\b|\b1\d{10}\b|\b0\d{2,3}[- ]\d{7,8}\b)/ },
+  { cat: "护照号", re: /\b[A-Z]{1,2}\d{7,9}\b/ },
+  /* 金额：gate=amount，仅当 App.redactAmount 为真才生效（定稿：默认不打） */
+  { cat: "金额", gate: REDACT_AMOUNT_GATE, re: /(?:HK\$|US\$|RMB\s?|CNY\s?|\$)\s?[\d,]+(?:\.\d{1,2})?|\b\d{1,3}(?:,\d{3})+\b/ },
 ];
 
 /* lines: [{words:[{text,bbox}], bbox}] 返回命中区域列表 */
@@ -1071,6 +1081,8 @@ function detectRedactions(lines) {
     const lineText = line.words.map(w => w.text).join(" ");
     /* 1) 标签行：定位标签结束词，覆盖其后整段 */
     for (const tag of REDACT_TAGS) {
+      /* v1.19.13：带 gate 的类别（金额）受开关控制，默认不打 */
+      if (tag.gate === REDACT_AMOUNT_GATE && !(typeof App !== "undefined" && App.redactAmount)) continue;
       const m = lineText.match(tag.re);
       if (!m) continue;
       /* 找标签末词在 words 中的序号 */
@@ -1114,6 +1126,8 @@ function detectRedactions(lines) {
     /* 2) 裸正则（无标签行兜底） */
     if (!REDACT_TAGS.some(t => lineText.match(t.re))) {
       for (const rx of REDACT_REGEX) {
+        /* v1.19.13：带 gate 的类别（金额）受开关控制，默认不打 */
+        if (rx.gate === REDACT_AMOUNT_GATE && !(typeof App !== "undefined" && App.redactAmount)) continue;
         let mm;
         const re = new RegExp(rx.re.source, "g");
         while ((mm = re.exec(lineText)) !== null) {
@@ -3164,8 +3178,9 @@ window.__SCHOOL_INTRO__ = {
  * ============================================================ */
 "use strict";
 
-const VERSION = "v1.19.12";
+const VERSION = "v1.19.13";
 const CHANGELOG = [
+  { v: "v1.19.13", t: "2026-10-21", n: "v1.19.13 把 10 条长期约束从注释降级为代码（详见 tests/ 与 offergen-constraints skill）：① engine.js 提 REDACT_CATS 常量（打码 9 类），补护照号标签/正则，金额加 gate 门控默认不打；② app.js 提 OUTPUT_MIME/OUTPUT_MAX_BYTES/OUT_NAME_RE 常量与 resultFileName() 函数；③ 修根因2——mapMajorCn 增加 allowGuess 参数，prefillFields 改用严格模式，专业只在字典精确/包含命中时自动填，猜不中的留空让人工核对。" },
   { v: "v1.19.12", t: "2026-10-21", n: "v1.19.12 恢复 v1.3.0 定稿的校名多候选投票约束：锚点层旧实现按 UNIV_MAP 表序取第一个命中就返回，从未真正执行投票，导致岭南大学 offer（抬头 Lingnan 位于文首）被正文里学生母校 The Hang Seng University of Hong Kong 截出的 University of Hong Kong抢走。现改为收集全部命中 → 限定词前扩补全校名 → 安全阀过滤 → 按位置靠前与完整度投票。同步补香港恒生大学指纹，HKU 正则加否定后瞻。" },
   { v: "v1.19.11", t: "2026-10-21", n: "🔧 校名锚点防劫持系列修复（HKU offer 被填成澳门科技大学事故）：① extractByVote 词典锚点层加安全阀——命中片段必须含 University/College 等主体词或本身 ≥12 字符，普通单词（must be satisfied / further reading / fitness）不再能借上文拼装成伪校名；② UNIV_MAP 删除 60 余处「英文单词型」裸缩写分支（must/fit/reading/bath/rice/brown/duke/kent/essex/davis/york/um/lbs/bu/uw/mit 等），全名分支保留，缩写兜底改由大小写敏感的指纹库承担；③ 补 HKU 官方词序 University of Hong Kong（原正则只有 hong kong university 词序，永远匹配不到）；④ UNIV_FP 补澳门科技大学指纹（域名 must.edu.mo，不带 MUST 缩写）；⑤ mapUnivCn 改为命中文本最长者胜；⑥ resolveUnivName 对不像校名的 raw 增加全文关键词兜底；⑦ cnUnivScan 繁简归一（嶺南大學→岭南大学）。" },
   { v: "v1.19.10", t: "2026-10-21", n: "🔧 专业匹配排序修复：词典「猜」在得分平局时不再取最长条目，改为按覆盖率决胜（条目被输入解释的比例 → 输入被解释的比例 → 更短者）。修复 Master of Science in Family Office Management 被误配成 Human Development（人类发展与家庭研究）的问题，现正确落到 Family Studies（家庭研究）；同类收益：Quantitative Risk Analytics → 量化金融、MSc Finance → 金融学。同步修复专业字典 632 处变体中文吞字（@与工程 / @与研究 / @管理 / @人类与生物 等），以 2026-10-21 提供的中英对照全文回填 data/major_A~D.js，主条目 365 + 变体 851 全量配齐。" },
@@ -3770,12 +3785,15 @@ function prefillFields(full) {
   const m = mapUnivCn(f.en.univ);
   f.cn.univ = ru.cnName || m.cn;
   App.fields.flag = m.flag;            // 国旗 emoji（2026-10-05 恢复）
-  f.cn.major = cnMaj ? cnMaj.cn : mapMajorCn(f.en.major);
+  /* v1.19.13 根因2：中文专业只在 exact/contains 命中时自动填，猜不中的留空 */
+  f.cn.major = cnMaj ? cnMaj.cn : mapMajorCn(f.en.major, false);
   /* v1.9.0：词典「猜」中的专业名照样自动填，但必须打标让人工核对 */
   App.majorGuess = null;
   if (f.en.major) {
     const mr = resolveMajor(f.en.major);
     if (mr && mr.mode === "guess") {
+      /* v1.19.13：严格模式下中文栏已留空，提示语说明原因 */
+      App.majorGuess = App.majorGuess || {};
       App.majorGuess = {
         cn: "专业名「" + mr.cn + "」是按词典推测的 —— 原文 " + f.en.major +
             "，最接近的条目是 " + mr.canon + "。请核对后再生成。",
@@ -5029,11 +5047,14 @@ function resolveMajor(en) {
   }
   return best;
 }
-function mapMajorCn(en) {
+/* v1.19.13 根因2：allowGuess=false 时，「猜」的和旧 37 条模糊兜底都不自动填 ——
+   OCR 拿不准就留空让人工核对，绝不把瞎猜词落进字段
+   （Family Office Management 曾猜成「人类发展与家庭研究」污染冠名）*/
+function mapMajorCn(en, allowGuess) {
   if (!en) return "";
   const r = resolveMajor(en);
-  if (r) return r.cn;
-  for (const [re, cn] of MAJOR_MAP) if (re.test(en)) return cn;   // 旧 37 条兜底
+  if (r && (allowGuess || r.mode !== "guess")) return r.cn;
+  if (allowGuess) for (const [re, cn] of MAJOR_MAP) if (re.test(en)) return cn;   // 旧 37 条兜底
   return "";
 }
 function mapDegreeCn(en) {
@@ -5212,6 +5233,18 @@ function resolveFlag() {
 }
 
 /* 把手敲的四个框收进 App.fields（生成前 / 切语言前必须调，否则改动不入库） */
+/* 输出规格 + 文件名格式（2026-10-06 用户定稿，v1.19.13 提为常量/函数供检测断言）*/
+const OUTPUT_MIME = "image/jpeg";                     // 输出只要 JPG
+const OUTPUT_MAX_BYTES = 2 * 1024 * 1024;             // <=2MB
+const OUT_NAME_RE = /^\d{6}_[^_]+(_[^_]+)?\.jpg$/;  // YYMMDD_学校_专业.jpg
+function resultFileName(univ, major) {
+  const now = new Date();
+  const datePrefix = String(now.getFullYear()).slice(2) +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0");
+  return datePrefix + "_" + (univ || "录取捷报") + (major ? "_" + major : "") + ".jpg";
+}
+
 function captureFields() {
   const f = App.fields[App.fields.lang];
   if (!f) return;
@@ -5404,12 +5437,7 @@ async function showResult(checks) {
   const major = App.fields.lang === "cn"
     ? ($("#f-major").value.trim() + $("#f-degree").value.trim())
     : ($("#f-major").value.trim());
-  /* 文件名：YYMMDD_学校_专业.jpg（2026-10-06 用户定稿） */
-  const now = new Date();
-  const datePrefix = String(now.getFullYear()).slice(2) +
-    String(now.getMonth() + 1).padStart(2, "0") +
-    String(now.getDate()).padStart(2, "0");
-  App.resultName = datePrefix + "_" + univ + (major ? "_" + major : "") + ".jpg";
+  App.resultName = resultFileName(univ, major);
 
   /* 原图文件名：录取捷报名 + _原素材 + 原始素材扩展名（png/webp 保留，jpeg/webp 都按原样） */
   App.origExt = (App.offerFile && App.offerFile.type === "image/png") ? ".png"
